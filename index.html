@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Sokoban</title>
+<style>
+  :root {
+    --bg: #12141c;
+    --panel: #1c1f2b;
+    --panel-2: #252938;
+    --text: #e8eaf2;
+    --muted: #8b91a7;
+    --accent: #f5a742;
+    --accent-2: #4cc38a;
+    --danger: #e5534b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  header {
+    width: 100%;
+    max-width: 720px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 16px 20px 8px;
+  }
+  h1 {
+    font-size: 22px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  #level-label { color: var(--muted); font-size: 14px; }
+  #level-label b { color: var(--text); }
+
+  #hud {
+    width: 100%;
+    max-width: 720px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 20px 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  #stats { display: flex; gap: 16px; font-size: 14px; color: var(--muted); }
+  #stats b { color: var(--text); font-variant-numeric: tabular-nums; }
+  #buttons { display: flex; gap: 8px; }
+  button {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid #343a4f;
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  button:hover { background: #313749; }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #201404; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #board-wrap {
+    flex: 1;
+    width: 100%;
+    max-width: 720px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 16px 12px;
+    min-height: 0;
+    position: relative;
+  }
+  canvas { display: block; border-radius: 12px; }
+
+  footer {
+    padding: 8px 16px 18px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.7;
+  }
+  footer span { white-space: nowrap; }
+  .key {
+    display: inline-block;
+    background: var(--panel-2);
+    border: 1px solid #343a4f;
+    border-radius: 5px;
+    padding: 0 6px;
+    font-size: 11px;
+    color: var(--text);
+  }
+
+  /* Overlays */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 12, 18, 0.75);
+    backdrop-filter: blur(3px);
+    border-radius: 12px;
+    z-index: 10;
+  }
+  .overlay.hidden { display: none; }
+  .card {
+    background: var(--panel);
+    border: 1px solid #343a4f;
+    border-radius: 14px;
+    padding: 28px 34px;
+    text-align: center;
+    max-width: 90%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .card h2 { color: var(--accent-2); font-size: 24px; margin-bottom: 8px; }
+  .card p { color: var(--muted); font-size: 14px; margin-bottom: 18px; }
+  .card p b { color: var(--text); }
+  .card .row { display: flex; gap: 10px; justify-content: center; }
+
+  /* Level select */
+  #level-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 64px);
+    gap: 10px;
+    margin: 6px 0 4px;
+  }
+  .lvl-btn {
+    width: 64px; height: 64px;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .lvl-btn small { font-size: 10px; font-weight: 400; color: var(--muted); }
+  .lvl-btn.done { border-color: var(--accent-2); color: var(--accent-2); }
+  .lvl-btn.current { border-color: var(--accent); color: var(--accent); }
+  .lvl-btn.locked { opacity: 0.35; }
+  #select-card h2 { color: var(--accent); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Sokoban</h1>
+    <div id="level-label"></div>
+  </header>
+
+  <div id="hud">
+    <div id="stats">
+      <span>Moves <b id="moves">0</b></span>
+      <span>Pushes <b id="pushes">0</b></span>
+      <span>Best <b id="best">–</b></span>
+    </div>
+    <div id="buttons">
+      <button id="btn-undo" title="Undo (Z)">Undo</button>
+      <button id="btn-restart" title="Restart (R)">Restart</button>
+      <button id="btn-levels" title="Level select (L)">Levels</button>
+    </div>
+  </div>
+
+  <div id="board-wrap">
+    <canvas id="board"></canvas>
+
+    <div id="win-overlay" class="overlay hidden">
+      <div class="card">
+        <h2>Level Complete!</h2>
+        <p id="win-stats"></p>
+        <div class="row">
+          <button id="btn-replay">Replay</button>
+          <button id="btn-next" class="primary">Next Level →</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="select-overlay" class="overlay hidden">
+      <div class="card" id="select-card">
+        <h2>Select Level</h2>
+        <div id="level-grid"></div>
+        <p style="margin-top:12px; margin-bottom:0;">Finish a level to unlock the next.</p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span><span class="key">←↑↓→</span> / <span class="key">WASD</span> move</span> &nbsp;·&nbsp;
+    <span><span class="key">Z</span> undo</span> &nbsp;·&nbsp;
+    <span><span class="key">R</span> restart</span> &nbsp;·&nbsp;
+    <span><span class="key">L</span> levels</span> &nbsp;·&nbsp;
+    <span>swipe to move on touch screens</span>
+  </footer>
+
+<script src="levels.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  const LS_KEY = "sokoban-progress-v2"; // v2: level list expanded to 20 and reordered
+  const canvas = document.getElementById("board");
+  const ctx = canvas.getContext("2d");
+
+  // ---------- persistent progress ----------
+  function loadProgress() {
+    try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; }
+    catch { return {}; }
+  }
+  function saveProgress() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(progress)); } catch {}
+  }
+  let progress = loadProgress();          // { best: {i: {moves,pushes}}, current: i }
+  progress.best = progress.best || {};
+
+  function maxUnlocked() {
+    let u = 0;
+    for (let i = 0; i < LEVELS.length; i++) {
+      if (progress.best[i]) u = Math.min(i + 1, LEVELS.length - 1);
+    }
+    return u;
+  }
+
+  // ---------- game state ----------
+  let levelIndex = 0;
+  let grid = { w: 0, h: 0, walls: new Set(), goals: new Set(), floors: new Set() };
+  let player = { x: 0, y: 0 };
+  let boxes = new Set();                  // "x,y" keys
+  let history = [];                       // undo stack
+  let moves = 0, pushes = 0;
+  let won = false;
+
+  const key = (x, y) => x + "," + y;
+
+  function parseLevel(i) {
+    const rows = LEVELS[i].map;
+    grid = { w: 0, h: rows.length, walls: new Set(), goals: new Set(), floors: new Set() };
+    boxes = new Set();
+    history = [];
+    moves = 0; pushes = 0; won = false;
+    rows.forEach((row, y) => {
+      grid.w = Math.max(grid.w, row.length);
+      for (let x = 0; x < row.length; x++) {
+        const ch = row[x];
+        const k = key(x, y);
+        if (ch === "#") grid.walls.add(k);
+        else {
+          if (ch === "." || ch === "*" || ch === "+") grid.goals.add(k);
+          if (ch === "$" || ch === "*") boxes.add(k);
+          if (ch === "@" || ch === "+") { player.x = x; player.y = y; }
+        }
+      }
+    });
+    // mark interior floors (flood fill from player) for drawing
+    grid.floors = new Set();
+    const q = [[player.x, player.y]];
+    const seen = new Set([key(player.x, player.y)]);
+    while (q.length) {
+      const [x, y] = q.pop();
+      grid.floors.add(key(x, y));
+      for (const [dx, dy] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+        const nx = x + dx, ny = y + dy, nk = key(nx, ny);
+        if (!grid.walls.has(nk) && !seen.has(nk) &&
+            nx >= 0 && ny >= 0 && nx < grid.w && ny < grid.h) {
+          seen.add(nk);
+          q.push([nx, ny]);
+        }
+      }
+    }
+    progress.current = i;
+    saveProgress();
+    updateHud();
+    resize();
+  }
+
+  function tryMove(dx, dy) {
+    if (won) return;
+    const nx = player.x + dx, ny = player.y + dy;
+    const nk = key(nx, ny);
+    if (grid.walls.has(nk)) return;
+    let pushed = null;
+    if (boxes.has(nk)) {
+      const bx = nx + dx, by = ny + dy;
+      const bk = key(bx, by);
+      if (grid.walls.has(bk) || boxes.has(bk)) return;
+      pushed = { from: nk, to: bk };
+    }
+    history.push({ px: player.x, py: player.y, pushed });
+    if (pushed) {
+      boxes.delete(pushed.from);
+      boxes.add(pushed.to);
+      pushes++;
+    }
+    player.x = nx; player.y = ny;
+    moves++;
+    updateHud();
+    draw();
+    checkWin();
+  }
+
+  function undo() {
+    if (won || !history.length) return;
+    const h = history.pop();
+    if (h.pushed) {
+      boxes.delete(h.pushed.to);
+      boxes.add(h.pushed.from);
+      pushes--;
+    }
+    player.x = h.px; player.y = h.py;
+    moves--;
+    updateHud();
+    draw();
+  }
+
+  function checkWin() {
+    for (const b of boxes) if (!grid.goals.has(b)) return;
+    won = true;
+    const prev = progress.best[levelIndex];
+    if (!prev || moves < prev.moves) {
+      progress.best[levelIndex] = { moves, pushes };
+      saveProgress();
+    }
+    const isLast = levelIndex === LEVELS.length - 1;
+    document.getElementById("win-stats").innerHTML =
+      `Solved in <b>${moves}</b> moves / <b>${pushes}</b> pushes` +
+      (isLast ? `<br><br>That was the last level — you beat the game! 🏆` : "");
+    document.getElementById("btn-next").style.display = isLast ? "none" : "";
+    setTimeout(() => document.getElementById("win-overlay").classList.remove("hidden"), 250);
+    updateHud();
+  }
+
+  // ---------- rendering ----------
+  function resize() {
+    const wrap = document.getElementById("board-wrap");
+    const availW = wrap.clientWidth - 32;
+    const availH = wrap.clientHeight - 12;
+    const tile = Math.max(14, Math.floor(Math.min(availW / grid.w, availH / grid.h)));
+    const cssW = tile * grid.w, cssH = tile * grid.h;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    canvas.width = cssW * dpr;
+    canvas.height = cssH * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    canvas._tile = tile;
+    draw();
+  }
+
+  function rr(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+  }
+
+  function draw() {
+    const t = canvas._tile;
+    if (!t) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    for (let y = 0; y < grid.h; y++) {
+      for (let x = 0; x < grid.w; x++) {
+        const k = key(x, y);
+        const px = x * t, py = y * t;
+        if (grid.walls.has(k)) {
+          ctx.fillStyle = "#2e3448";
+          rr(px + 1, py + 1, t - 2, t - 2, t * 0.18); ctx.fill();
+          ctx.fillStyle = "#3a415c";
+          rr(px + 1, py + 1, t - 2, t * 0.4, t * 0.18); ctx.fill();
+        } else if (grid.floors.has(k)) {
+          ctx.fillStyle = (x + y) % 2 ? "#1b1e2a" : "#1e2230";
+          ctx.fillRect(px, py, t, t);
+          if (grid.goals.has(k)) {
+            ctx.fillStyle = "rgba(76, 195, 138, 0.16)";
+            ctx.fillRect(px, py, t, t);
+            ctx.strokeStyle = "#4cc38a";
+            ctx.lineWidth = Math.max(1.5, t * 0.06);
+            ctx.beginPath();
+            ctx.arc(px + t / 2, py + t / 2, t * 0.18, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    // boxes
+    for (const b of boxes) {
+      const [x, y] = b.split(",").map(Number);
+      const px = x * t, py = y * t;
+      const onGoal = grid.goals.has(b);
+      const m = t * 0.1;
+      ctx.fillStyle = onGoal ? "#3f9e6f" : "#b97f38";
+      rr(px + m, py + m, t - 2 * m, t - 2 * m, t * 0.14); ctx.fill();
+      ctx.strokeStyle = onGoal ? "#2c7450" : "#8a5c26";
+      ctx.lineWidth = Math.max(1.5, t * 0.07);
+      rr(px + m * 1.6, py + m * 1.6, t - 3.2 * m, t - 3.2 * m, t * 0.09); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px + m * 1.6, py + m * 1.6);
+      ctx.lineTo(px + t - m * 1.6, py + t - m * 1.6);
+      ctx.moveTo(px + t - m * 1.6, py + m * 1.6);
+      ctx.lineTo(px + m * 1.6, py + t - m * 1.6);
+      ctx.stroke();
+    }
+
+    // player
+    {
+      const px = player.x * t, py = player.y * t;
+      const cx = px + t / 2, cy = py + t / 2;
+      ctx.fillStyle = "#5aa7f0";
+      ctx.beginPath();
+      ctx.arc(cx, cy, t * 0.32, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#12141c";
+      ctx.beginPath();
+      ctx.arc(cx - t * 0.1, cy - t * 0.05, t * 0.05, 0, Math.PI * 2);
+      ctx.arc(cx + t * 0.1, cy - t * 0.05, t * 0.05, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ---------- HUD / overlays ----------
+  function updateHud() {
+    document.getElementById("moves").textContent = moves;
+    document.getElementById("pushes").textContent = pushes;
+    const best = progress.best[levelIndex];
+    document.getElementById("best").textContent = best ? best.moves : "–";
+    document.getElementById("level-label").innerHTML =
+      `Level <b>${levelIndex + 1}</b> / ${LEVELS.length} — <b>${LEVELS[levelIndex].name}</b>`;
+    document.getElementById("btn-undo").disabled = !history.length || won;
+  }
+
+  function buildLevelGrid() {
+    const gridEl = document.getElementById("level-grid");
+    gridEl.innerHTML = "";
+    const unlocked = maxUnlocked();
+    LEVELS.forEach((lv, i) => {
+      const b = document.createElement("button");
+      b.className = "lvl-btn";
+      const best = progress.best[i];
+      if (best) b.classList.add("done");
+      if (i === levelIndex) b.classList.add("current");
+      if (i > unlocked && !best) {
+        b.classList.add("locked");
+        b.disabled = true;
+        b.innerHTML = `🔒`;
+      } else {
+        b.innerHTML = `${i + 1}<small>${best ? best.moves + " mv" : "new"}</small>`;
+        b.addEventListener("click", () => {
+          hideOverlays();
+          levelIndex = i;
+          parseLevel(i);
+        });
+      }
+      gridEl.appendChild(b);
+    });
+  }
+
+  function hideOverlays() {
+    document.getElementById("win-overlay").classList.add("hidden");
+    document.getElementById("select-overlay").classList.add("hidden");
+  }
+  function overlayShown() {
+    return !document.getElementById("win-overlay").classList.contains("hidden") ||
+           !document.getElementById("select-overlay").classList.contains("hidden");
+  }
+
+  // ---------- input ----------
+  const KEYMAP = {
+    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+  };
+  window.addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (k === "Escape") { hideOverlays(); draw(); return; }
+    if (overlayShown()) {
+      if (won && (k === "Enter" || k === " ")) { e.preventDefault(); nextLevel(); }
+      return;
+    }
+    if (KEYMAP[k]) { e.preventDefault(); tryMove(...KEYMAP[k]); }
+    else if (k === "z" || k === "u") undo();
+    else if (k === "r") parseLevel(levelIndex);
+    else if (k === "l") { buildLevelGrid(); document.getElementById("select-overlay").classList.remove("hidden"); }
+  });
+
+  // touch: swipe to move
+  let touchStart = null;
+  canvas.addEventListener("touchstart", (e) => {
+    touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, { passive: true });
+  canvas.addEventListener("touchend", (e) => {
+    if (!touchStart) return;
+    const dx = e.changedTouches[0].clientX - touchStart.x;
+    const dy = e.changedTouches[0].clientY - touchStart.y;
+    touchStart = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+    if (Math.abs(dx) > Math.abs(dy)) tryMove(dx > 0 ? 1 : -1, 0);
+    else tryMove(0, dy > 0 ? 1 : -1);
+  }, { passive: true });
+
+  function nextLevel() {
+    hideOverlays();
+    if (levelIndex < LEVELS.length - 1) levelIndex++;
+    parseLevel(levelIndex);
+  }
+
+  document.getElementById("btn-undo").addEventListener("click", undo);
+  document.getElementById("btn-restart").addEventListener("click", () => { hideOverlays(); parseLevel(levelIndex); });
+  document.getElementById("btn-levels").addEventListener("click", () => {
+    buildLevelGrid();
+    document.getElementById("select-overlay").classList.remove("hidden");
+  });
+  document.getElementById("btn-next").addEventListener("click", nextLevel);
+  document.getElementById("btn-replay").addEventListener("click", () => { hideOverlays(); parseLevel(levelIndex); });
+
+  window.addEventListener("resize", resize);
+
+  // ---------- boot ----------
+  const start = Math.min(progress.current || 0, LEVELS.length - 1);
+  levelIndex = (start <= maxUnlocked() || progress.best[start]) ? start : 0;
+  parseLevel(levelIndex);
+})();
+</script>
+</body>
+</html>
