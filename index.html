@@ -155,6 +155,39 @@
   .lvl-btn.current { border-color: var(--accent); color: var(--accent); }
   .lvl-btn.locked { opacity: 0.35; }
   #select-card h2 { color: var(--accent); }
+
+  /* Leaderboard */
+  input#name-input {
+    background: var(--panel-2);
+    border: 1px solid #343a4f;
+    border-radius: 8px;
+    color: var(--text);
+    padding: 7px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    width: 150px;
+  }
+  #lb-card { max-height: 85%; overflow-y: auto; min-width: 320px; }
+  #lb-you { margin-bottom: 12px; }
+  #lb-you a { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .lb-table { border-collapse: collapse; margin: 0 auto 18px; font-size: 13px; }
+  .lb-table caption {
+    color: var(--accent);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding-bottom: 6px;
+  }
+  .lb-table th {
+    color: var(--muted);
+    font-weight: 500;
+    text-align: left;
+    padding: 3px 12px;
+    border-bottom: 1px solid #343a4f;
+  }
+  .lb-table td { padding: 4px 12px; text-align: left; font-variant-numeric: tabular-nums; }
+  .lb-table tr.me td { color: var(--accent); }
+  .lb-table td.num { text-align: right; }
 </style>
 </head>
 <body>
@@ -173,6 +206,7 @@
       <button id="btn-undo" title="Undo (Z)">Undo</button>
       <button id="btn-restart" title="Restart (R)">Restart</button>
       <button id="btn-levels" title="Level select (L)">Levels</button>
+      <button id="btn-board" title="Leaderboard (B)" style="display:none">Leaderboard</button>
     </div>
   </div>
 
@@ -183,6 +217,10 @@
       <div class="card">
         <h2>Level Complete!</h2>
         <p id="win-stats"></p>
+        <div id="name-row" class="row" style="display:none; margin-bottom:14px;">
+          <input id="name-input" maxlength="20" placeholder="Your name" autocomplete="off">
+          <button id="btn-save-name">Join leaderboard</button>
+        </div>
         <div class="row">
           <button id="btn-replay">Replay</button>
           <button id="btn-next" class="primary">Next Level →</button>
@@ -197,6 +235,14 @@
         <p style="margin-top:12px; margin-bottom:0;">Finish a level to unlock the next.</p>
       </div>
     </div>
+
+    <div id="lb-overlay" class="overlay hidden">
+      <div class="card" id="lb-card">
+        <h2 style="color: var(--accent);">Leaderboard</h2>
+        <p id="lb-you"></p>
+        <div id="lb-content"><p>Loading…</p></div>
+      </div>
+    </div>
   </div>
 
   <footer>
@@ -207,6 +253,7 @@
     <span>swipe to move on touch screens</span>
   </footer>
 
+<script src="config.js"></script>
 <script src="levels.js"></script>
 <script>
 (() => {
@@ -226,6 +273,125 @@
   }
   let progress = loadProgress();          // { best: {i: {moves,pushes}}, current: i }
   progress.best = progress.best || {};
+
+  // ---------- leaderboard (Supabase REST) ----------
+  const LB = window.LEADERBOARD || {};
+  const lbEnabled = !!(LB.url && LB.anonKey);
+  let playerName = localStorage.getItem("sokoban-player") || "";
+
+  function lbFetch(path, opts = {}) {
+    return fetch(LB.url + path, {
+      ...opts,
+      cache: "no-store",
+      headers: {
+        apikey: LB.anonKey,
+        Authorization: "Bearer " + LB.anonKey,
+        "Content-Type": "application/json",
+        ...(opts.headers || {}),
+      },
+    });
+  }
+
+  function submitScore(levelIdx, m, p) {
+    if (!lbEnabled || !playerName) return;
+    lbFetch("/rest/v1/scores", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ player: playerName, level: levelIdx + 1, moves: m, pushes: p }),
+    }).catch(() => {});
+  }
+
+  function setPlayerName(name) {
+    playerName = name.trim().slice(0, 20);
+    if (playerName) localStorage.setItem("sokoban-player", playerName);
+  }
+
+  async function openLeaderboard() {
+    hideOverlays();
+    document.getElementById("lb-overlay").classList.remove("hidden");
+    const youEl = document.getElementById("lb-you");
+    youEl.innerHTML = "";
+    if (playerName) {
+      youEl.append(`Playing as `);
+      const b = document.createElement("b");
+      b.textContent = playerName;
+      youEl.append(b, " — ");
+      const a = document.createElement("a");
+      a.textContent = "change name";
+      a.addEventListener("click", () => {
+        const n = window.prompt("Your leaderboard name:", playerName);
+        if (n && n.trim()) { setPlayerName(n); openLeaderboard(); }
+      });
+      youEl.append(a);
+    } else {
+      youEl.textContent = "Finish a level and enter a name to join the board.";
+    }
+    const content = document.getElementById("lb-content");
+    content.innerHTML = "<p>Loading…</p>";
+    let rows;
+    try {
+      const res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes&limit=10000");
+      if (!res.ok) throw new Error(res.status);
+      rows = await res.json();
+    } catch {
+      content.innerHTML = "<p>Couldn't reach the leaderboard — try again in a moment.</p>";
+      return;
+    }
+    content.innerHTML = "";
+    if (!rows.length) {
+      content.innerHTML = "<p>No scores yet — be the first!</p>";
+      return;
+    }
+    const me = playerName.toLowerCase();
+
+    // overall: rank by levels cleared desc, then total moves asc
+    const byPlayer = new Map();
+    for (const r of rows) {
+      const k = r.player.toLowerCase();
+      if (!byPlayer.has(k)) byPlayer.set(k, { name: r.player, cleared: 0, moves: 0 });
+      const s = byPlayer.get(k);
+      s.cleared++; s.moves += r.moves;
+    }
+    const overall = [...byPlayer.values()]
+      .sort((a, b) => b.cleared - a.cleared || a.moves - b.moves).slice(0, 20);
+    content.appendChild(makeTable("Overall", ["#", "Player", "Cleared", "Total moves"],
+      overall.map((s, i) => [i + 1, s.name, s.cleared + " / " + LEVELS.length, s.moves]),
+      overall.map(s => s.name.toLowerCase() === me)));
+
+    // current level
+    const lvlRows = rows.filter(r => r.level === levelIndex + 1)
+      .sort((a, b) => a.moves - b.moves || a.pushes - b.pushes).slice(0, 10);
+    if (lvlRows.length) {
+      content.appendChild(makeTable(
+        `Level ${levelIndex + 1} — ${LEVELS[levelIndex].name}`,
+        ["#", "Player", "Moves", "Pushes"],
+        lvlRows.map((r, i) => [i + 1, r.player, r.moves, r.pushes]),
+        lvlRows.map(r => r.player.toLowerCase() === me)));
+    }
+  }
+
+  function makeTable(caption, headers, rows, isMe) {
+    const tbl = document.createElement("table");
+    tbl.className = "lb-table";
+    tbl.createCaption().textContent = caption;
+    const tr = tbl.createTHead().insertRow();
+    headers.forEach(h => {
+      const th = document.createElement("th");
+      th.textContent = h;
+      tr.appendChild(th);
+    });
+    const body = tbl.createTBody();
+    rows.forEach((cells, i) => {
+      const r = body.insertRow();
+      if (isMe[i]) r.className = "me";
+      cells.forEach((c, j) => {
+        const td = r.insertCell();
+        td.textContent = c;
+        if (j !== 1) td.className = "num";
+      });
+    });
+    return tbl;
+  }
 
   function maxUnlocked() {
     let u = 0;
@@ -339,6 +505,8 @@
       `Solved in <b>${moves}</b> moves / <b>${pushes}</b> pushes` +
       (isLast ? `<br><br>That was the last level — you beat the game! 🏆` : "");
     document.getElementById("btn-next").style.display = isLast ? "none" : "";
+    document.getElementById("name-row").style.display = (lbEnabled && !playerName) ? "" : "none";
+    submitScore(levelIndex, moves, pushes);
     setTimeout(() => document.getElementById("win-overlay").classList.remove("hidden"), 250);
     updateHud();
   }
@@ -470,10 +638,11 @@
   function hideOverlays() {
     document.getElementById("win-overlay").classList.add("hidden");
     document.getElementById("select-overlay").classList.add("hidden");
+    document.getElementById("lb-overlay").classList.add("hidden");
   }
   function overlayShown() {
-    return !document.getElementById("win-overlay").classList.contains("hidden") ||
-           !document.getElementById("select-overlay").classList.contains("hidden");
+    return ["win-overlay", "select-overlay", "lb-overlay"].some(
+      id => !document.getElementById(id).classList.contains("hidden"));
   }
 
   // ---------- input ----------
@@ -483,6 +652,7 @@
   };
   window.addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.target.tagName === "INPUT") return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (k === "Escape") { hideOverlays(); draw(); return; }
     if (overlayShown()) {
@@ -493,6 +663,7 @@
     else if (k === "z" || k === "u") undo();
     else if (k === "r") parseLevel(levelIndex);
     else if (k === "l") { buildLevelGrid(); document.getElementById("select-overlay").classList.remove("hidden"); }
+    else if (k === "b" && lbEnabled) openLeaderboard();
   });
 
   // touch: swipe to move
@@ -524,6 +695,21 @@
   });
   document.getElementById("btn-next").addEventListener("click", nextLevel);
   document.getElementById("btn-replay").addEventListener("click", () => { hideOverlays(); parseLevel(levelIndex); });
+  document.getElementById("btn-board").addEventListener("click", openLeaderboard);
+  document.getElementById("lb-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "lb-overlay") { hideOverlays(); draw(); }
+  });
+  if (lbEnabled) document.getElementById("btn-board").style.display = "";
+  document.getElementById("name-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("btn-save-name").click();
+  });
+  document.getElementById("btn-save-name").addEventListener("click", () => {
+    const v = document.getElementById("name-input").value;
+    if (!v.trim()) return;
+    setPlayerName(v);
+    document.getElementById("name-row").style.display = "none";
+    submitScore(levelIndex, moves, pushes);
+  });
 
   window.addEventListener("resize", resize);
 
