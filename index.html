@@ -404,6 +404,43 @@
     return knownNames;
   }
 
+  // Cross-device continuity: the leaderboard knows every level this player has
+  // cleared, so merge those clears into local progress. Unlocking (cleared
+  // levels + the next one) follows automatically from progress.best.
+  async function syncProgressFromBoard() {
+    if (!lbEnabled || !playerName) return;
+    let rows;
+    try {
+      let res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes,collection&limit=10000");
+      if (!res.ok) res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes&limit=10000");
+      if (!res.ok) return;
+      rows = await res.json();
+    } catch { return; }
+    const me = playerName.toLowerCase();
+    let added = false;
+    for (const r of rows) {
+      if (r.player.toLowerCase() !== me) continue;
+      const c = r.collection || "main";
+      const col = COLLECTIONS.find(x => x.id === c);
+      if (!col || r.level < 1 || r.level > col.levels.length) continue;
+      const k = bkey(c, r.level - 1);
+      const cur = progress.best[k];
+      if (!cur || r.moves < cur.moves) {
+        progress.best[k] = { moves: r.moves, pushes: r.pushes };
+        added = true;
+      }
+    }
+    if (!added) return;
+    saveProgress();
+    // resume at the next uncleared level unless the player already started moving
+    if (moves === 0 && !won && progress.best[bkey(colId, levelIndex)]) {
+      levelIndex = maxUnlocked(CUR());
+      parseLevel(levelIndex);
+    } else {
+      updateHud();
+    }
+  }
+
   let pickerDone = null;
   async function openNamePicker(onDone) {
     pickerDone = onDone || null;
@@ -443,6 +480,7 @@
     document.getElementById("name-overlay").classList.add("hidden");
     document.getElementById("name-row").style.display = "none";
     if (won) submitScore(levelIndex, moves, pushes);  // joined right after clearing a level
+    syncProgressFromBoard();
     const cb = pickerDone;
     pickerDone = null;
     if (cb) cb();
@@ -925,6 +963,7 @@
     levelIndex = (start <= maxUnlocked(CUR()) || progress.best[bkey(colId, start)]) ? start : 0;
     parseLevel(levelIndex);
     if (lbEnabled && !playerName) openNamePicker();
+    else syncProgressFromBoard();  // returning player: pick up clears from other devices
   }
 })();
 </script>
