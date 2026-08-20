@@ -46,7 +46,11 @@
     letter-spacing: 3px;
     text-transform: uppercase;
     color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
+  #logo { height: 44px; width: auto; flex-shrink: 0; }
   h1 .jp {
     font-size: 15px;
     letter-spacing: 2px;
@@ -245,7 +249,45 @@
 </head>
 <body>
   <header>
-    <h1>Sokoban <span class="jp">倉庫番</span></h1>
+    <h1><svg id="logo" viewBox="0 0 165 115" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="倉庫番 keeper pushing a crate">
+      <ellipse cx="85" cy="108" rx="72" ry="5.5" fill="#000" opacity="0.3"/>
+      <g transform="rotate(4 152 106)">
+        <rect x="86" y="36" width="70" height="70" rx="10" fill="#b97f38" stroke="#7a4f1d" stroke-width="4.5"/>
+        <rect x="94" y="44" width="54" height="54" rx="6" fill="none" stroke="#8a5c26" stroke-width="3.5"/>
+        <path d="M96 46 L146 96 M146 46 L96 96" stroke="#8a5c26" stroke-width="3.5" stroke-linecap="round"/>
+        <g font-family="'Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic','Noto Sans JP',sans-serif"
+           font-weight="800" font-size="22" fill="#2b1a08" text-anchor="middle"
+           stroke="#f7e6c8" stroke-width="4.5" paint-order="stroke" stroke-linejoin="round">
+          <text x="121" y="67">倉庫</text>
+          <text x="121" y="94">番</text>
+        </g>
+      </g>
+      <g opacity="0.6" stroke="#8b91a7" stroke-width="3" stroke-linecap="round">
+        <path d="M4 52 L16 52 M2 64 L14 64 M6 76 L16 76"/>
+      </g>
+      <circle cx="6" cy="98" r="4" fill="#8b91a7" opacity="0.5"/>
+      <circle cx="14" cy="103" r="3" fill="#8b91a7" opacity="0.35"/>
+      <circle cx="3" cy="106" r="2.5" fill="#8b91a7" opacity="0.3"/>
+      <g transform="rotate(12 42 100)">
+        <path d="M35 86 L18 103" stroke="#2f6fb0" stroke-width="7" stroke-linecap="round"/>
+        <path d="M46 88 L47 104" stroke="#2f6fb0" stroke-width="7" stroke-linecap="round"/>
+        <ellipse cx="15" cy="105" rx="6.5" ry="3.5" fill="#22334a"/>
+        <ellipse cx="49" cy="106" rx="6.5" ry="3.5" fill="#22334a"/>
+        <path d="M60 60 L85 53" stroke="#3f87d1" stroke-width="7" stroke-linecap="round"/>
+        <path d="M59 75 L85 76" stroke="#3f87d1" stroke-width="7" stroke-linecap="round"/>
+        <circle cx="42" cy="66" r="22" fill="#5aa7f0" stroke="#2f6fb0" stroke-width="3"/>
+        <path d="M21 56 L63 50" stroke="#f2f2f2" stroke-width="8" stroke-linecap="round"/>
+        <path d="M21 56 L63 50" stroke="#e5534b" stroke-width="3" stroke-linecap="round" stroke-dasharray="5 6"/>
+        <path d="M20 54 L10 46 M20 58 L9 56" stroke="#f2f2f2" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="47" cy="63" r="2.4" fill="#12141c"/>
+        <circle cx="57" cy="62" r="2.4" fill="#12141c"/>
+        <path d="M43 57 L50 55.5 M53 55 L60 56.5" stroke="#12141c" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M49 72 Q53 74 57 71" stroke="#12141c" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+        <path d="M69 28 q5 8 0 11 q-5 -3 0 -11" fill="#9cd0ff"/>
+        <circle cx="87" cy="53" r="5.5" fill="#3f87d1"/>
+        <circle cx="87" cy="76" r="5.5" fill="#3f87d1"/>
+      </g>
+    </svg>Sokoban <span class="jp">倉庫番</span></h1>
     <div id="level-label"></div>
   </header>
 
