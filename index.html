@@ -379,11 +379,27 @@
     try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; }
     catch { return {}; }
   }
-  function saveProgress() {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(progress)); } catch {}
+  function mergeProgress(from) {
+    // union of clears (keep better) + high-water marks; never lose either side
+    if (from.best) for (const [k, v] of Object.entries(from.best)) {
+      const cur = progress.best[k];
+      if (!cur || v.moves < cur.moves) progress.best[k] = v;
+    }
+    if (from.reached) for (const [c, i] of Object.entries(from.reached)) {
+      progress.reached[c] = Math.max(progress.reached[c] || 0, i);
+    }
   }
-  let progress = loadProgress();          // { best: {key: {moves,pushes}}, current: {c,i} }
+  function saveProgress() {
+    try {
+      // merge-on-save: another tab may have written since we loaded
+      const disk = JSON.parse(localStorage.getItem(LS_KEY));
+      if (disk) mergeProgress(disk);
+      localStorage.setItem(LS_KEY, JSON.stringify(progress));
+    } catch {}
+  }
+  let progress = loadProgress();          // { best, reached, current: {c,i} }
   progress.best = progress.best || {};
+  progress.reached = progress.reached || {};  // colId -> furthest level index ever played
 
   // ---------- collections ----------
   // "main" keeps plain numeric best-keys so pre-collection progress carries over.
@@ -431,7 +447,7 @@
   }
 
   // ---------- name picker ----------
-  const HIDDEN_CHIPS = ["claude"];  // test accounts, not real players
+  const HIDDEN_CHIPS = ["claude", "bugrepro", "bugrepro2"];  // test accounts, not real players
   let knownNames = null;
   async function loadKnownNames() {
     if (knownNames) return knownNames;
@@ -455,17 +471,20 @@
   // Cross-device continuity: the leaderboard knows every level this player has
   // cleared, so merge those clears into local progress. Unlocking (cleared
   // levels + the next one) follows automatically from progress.best.
-  async function syncProgressFromBoard() {
+  async function syncProgressFromBoard(retry = 0) {
     if (!lbEnabled || !playerName) return;
     let rows;
     try {
       let res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes,collection&limit=10000");
       if (!res.ok) res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes&limit=10000");
-      if (!res.ok) return;
+      if (!res.ok) throw new Error(res.status);
       rows = await res.json();
-    } catch { return; }
+    } catch {
+      // a single flaky request must not cost the whole session its restore
+      if (retry < 3) setTimeout(() => syncProgressFromBoard(retry + 1), 3000 * (retry + 1));
+      return;
+    }
     const me = playerName.toLowerCase();
-    let added = false;
     for (const r of rows) {
       if (r.player.toLowerCase() !== me) continue;
       const c = r.collection || "main";
@@ -475,17 +494,19 @@
       const cur = progress.best[k];
       if (!cur || r.moves < cur.moves) {
         progress.best[k] = { moves: r.moves, pushes: r.pushes };
-        added = true;
       }
     }
-    if (!added) return;
     saveProgress();
     // resume at the next uncleared level unless the player already started moving
-    if (moves === 0 && !won && progress.best[bkey(colId, levelIndex)]) {
+    if (moves === 0 && !won && progress.best[bkey(colId, levelIndex)] &&
+        maxUnlocked(CUR()) > levelIndex) {
       levelIndex = maxUnlocked(CUR());
       parseLevel(levelIndex);
     } else {
       updateHud();
+    }
+    if (!document.getElementById("select-overlay").classList.contains("hidden")) {
+      buildLevelGrid();  // refresh an open Levels screen with restored clears
     }
   }
 
@@ -657,7 +678,8 @@
     for (let i = 0; i < col.levels.length; i++) {
       if (progress.best[bkey(col.id, i)]) u = Math.min(i + 1, col.levels.length - 1);
     }
-    return u;
+    // a level once reached never re-locks, even if the clear record was lost
+    return Math.min(Math.max(u, progress.reached[col.id] || 0), col.levels.length - 1);
   }
 
   // ---------- game state ----------
@@ -707,6 +729,7 @@
       }
     }
     progress.current = { c: colId, i };
+    progress.reached[colId] = Math.max(progress.reached[colId] || 0, i);
     saveProgress();
     updateHud();
     resize();
@@ -943,7 +966,7 @@
     if (KEYMAP[k]) { e.preventDefault(); tryMove(...KEYMAP[k]); }
     else if (k === "z" || k === "u") undo();
     else if (k === "r") parseLevel(levelIndex);
-    else if (k === "l") { buildLevelGrid(); document.getElementById("select-overlay").classList.remove("hidden"); }
+    else if (k === "l") { buildLevelGrid(); document.getElementById("select-overlay").classList.remove("hidden"); syncProgressFromBoard(); }
     else if (k === "b" && lbEnabled) openLeaderboard();
   });
 
@@ -975,6 +998,12 @@
   document.getElementById("btn-levels").addEventListener("click", () => {
     buildLevelGrid();
     document.getElementById("select-overlay").classList.remove("hidden");
+    syncProgressFromBoard();
+  });
+  // absorb progress written by another tab of the game
+  window.addEventListener("storage", (e) => {
+    if (e.key !== LS_KEY || !e.newValue) return;
+    try { mergeProgress(JSON.parse(e.newValue)); updateHud(); } catch {}
   });
   document.getElementById("btn-next").addEventListener("click", nextLevel);
   document.getElementById("btn-replay").addEventListener("click", () => { hideOverlays(); parseLevel(levelIndex); });
