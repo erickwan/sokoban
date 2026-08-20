@@ -193,6 +193,7 @@
     width: 150px;
   }
   #lb-card { max-height: 85%; overflow-y: auto; min-width: 320px; }
+  #lb-content { overflow-x: auto; max-width: 84vw; }
   #lb-you { margin-bottom: 12px; }
   #lb-you a { color: var(--accent); cursor: pointer; text-decoration: underline; }
   .lb-table { border-collapse: collapse; margin: 0 auto 18px; font-size: 13px; }
@@ -369,11 +370,12 @@
     }
     const content = document.getElementById("lb-content");
     content.innerHTML = "<p>Loading…</p>";
-    let rows;
+    let rows, migrated = true;
     try {
       let res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes,collection&limit=10000");
       if (!res.ok) {
         // backend not migrated to collections yet — legacy shape, main quest only
+        migrated = false;
         res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes&limit=10000");
       }
       if (!res.ok) throw new Error(res.status);
@@ -389,28 +391,35 @@
     }
     const me = playerName.toLowerCase();
     for (const r of rows) r.collection = r.collection || "main";
-    const hasSide = rows.some(r => r.collection !== "main");
 
-    // overall: main-quest levels cleared desc, then total main moves asc
+    // overall: main-quest levels cleared desc, then total main moves asc,
+    // then side-quest levels cleared desc; 🏆 marks a completed pack
+    const packCols = migrated ? COLLECTIONS.slice(1) : [];
     const byPlayer = new Map();
     for (const r of rows) {
       const k = r.player.toLowerCase();
-      if (!byPlayer.has(k)) byPlayer.set(k, { name: r.player, cleared: 0, moves: 0, side: 0 });
+      if (!byPlayer.has(k)) byPlayer.set(k, { name: r.player, cleared: 0, moves: 0, packs: {} });
       const s = byPlayer.get(k);
       if (r.collection === "main") { s.cleared++; s.moves += r.moves; }
-      else s.side++;
+      else s.packs[r.collection] = (s.packs[r.collection] || 0) + 1;
     }
+    const sideTotal = s => Object.values(s.packs).reduce((a, b) => a + b, 0);
     const overall = [...byPlayer.values()]
-      .sort((a, b) => b.cleared - a.cleared || a.moves - b.moves || b.side - a.side)
+      .sort((a, b) => b.cleared - a.cleared || a.moves - b.moves || sideTotal(b) - sideTotal(a))
       .slice(0, 20);
-    const headers = ["#", "Player", "Cleared", "Total moves"];
-    if (hasSide) headers.push("Side quests");
+    const mainTotal = COLLECTIONS[0].levels.length;
+    const headers = ["#", "Player", "Main", "Moves", ...packCols.map(c => c.name)];
     content.appendChild(makeTable("Overall", headers,
-      overall.map((s, i) => {
-        const row = [i + 1, s.name, s.cleared + " / " + COLLECTIONS[0].levels.length, s.moves];
-        if (hasSide) row.push(s.side);
-        return row;
-      }),
+      overall.map((s, i) => [
+        i + 1, s.name,
+        s.cleared + "/" + mainTotal + (s.cleared === mainTotal ? " 🏆" : ""),
+        s.moves,
+        ...packCols.map(c => {
+          const n = s.packs[c.id] || 0;
+          if (!n) return "–";
+          return n + "/" + c.levels.length + (n === c.levels.length ? " 🏆" : "");
+        }),
+      ]),
       overall.map(s => s.name.toLowerCase() === me)));
 
     // current level of the current collection
