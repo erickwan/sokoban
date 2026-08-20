@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Sokoban</title>
+<title>Sokoban 倉庫番</title>
 <style>
   :root {
     --bg: #12141c;
@@ -46,6 +46,12 @@
     letter-spacing: 3px;
     text-transform: uppercase;
     color: var(--accent);
+  }
+  h1 .jp {
+    font-size: 15px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    vertical-align: 2px;
   }
   #level-label { color: var(--muted); font-size: 14px; }
   #level-label b { color: var(--text); }
@@ -239,7 +245,7 @@
 </head>
 <body>
   <header>
-    <h1>Sokoban</h1>
+    <h1>Sokoban <span class="jp">倉庫番</span></h1>
     <div id="level-label"></div>
   </header>
 
