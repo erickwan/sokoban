@@ -16,8 +16,13 @@
     --danger: #e5534b;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { height: 100%; }
+  html, body {
+    height: 100%;
+    overflow: hidden;            /* no page scroll: the layout fits the viewport */
+    overscroll-behavior: none;   /* no pull-to-refresh / rubber-banding */
+  }
   body {
+    height: 100dvh;              /* track mobile URL-bar show/hide */
     background: var(--bg);
     color: var(--text);
     font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
@@ -85,7 +90,7 @@
     min-height: 0;
     position: relative;
   }
-  canvas { display: block; border-radius: 12px; }
+  canvas { display: block; border-radius: 12px; touch-action: none; }
 
   footer {
     padding: 8px 16px 18px;
@@ -671,6 +676,8 @@
   canvas.addEventListener("touchstart", (e) => {
     touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   }, { passive: true });
+  // older mobile Safari ignores touch-action: none, so also block scroll here
+  canvas.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
   canvas.addEventListener("touchend", (e) => {
     if (!touchStart) return;
     const dx = e.changedTouches[0].clientX - touchStart.x;
