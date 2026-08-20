@@ -182,18 +182,39 @@
   #select-card h2 { color: var(--accent); }
 
   /* Leaderboard */
-  input#name-input {
+  #lb-card { max-height: 85%; overflow-y: auto; min-width: 320px; }
+  #lb-content { overflow-x: auto; max-width: 84vw; }
+
+  /* Name picker */
+  #name-card h2 { color: var(--accent); }
+  #picker-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    max-width: 340px;
+    max-height: 30vh;
+    overflow-y: auto;
+    margin: 0 auto;
+  }
+  #picker-chips p { font-size: 12px; margin: 0; }
+  #picker-known-label { font-size: 12px; }
+  #picker-skip {
+    color: var(--muted);
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 12px;
+  }
+  input#picker-input {
     background: var(--panel-2);
     border: 1px solid #343a4f;
     border-radius: 8px;
     color: var(--text);
     padding: 7px 10px;
-    font-size: 13px;
+    font-size: 14px;
     font-family: inherit;
-    width: 150px;
+    width: 170px;
   }
-  #lb-card { max-height: 85%; overflow-y: auto; min-width: 320px; }
-  #lb-content { overflow-x: auto; max-width: 84vw; }
   #lb-you { margin-bottom: 12px; }
   #lb-you a { color: var(--accent); cursor: pointer; text-decoration: underline; }
   .lb-table { border-collapse: collapse; margin: 0 auto 18px; font-size: 13px; }
@@ -244,8 +265,7 @@
         <h2>Level Complete!</h2>
         <p id="win-stats"></p>
         <div id="name-row" class="row" style="display:none; margin-bottom:14px;">
-          <input id="name-input" maxlength="20" placeholder="Your name" autocomplete="off">
-          <button id="btn-save-name">Join leaderboard</button>
+          <button id="btn-join">Join the leaderboard →</button>
         </div>
         <div class="row">
           <button id="btn-replay">Replay</button>
@@ -269,6 +289,20 @@
         <h2 style="color: var(--accent);">Leaderboard</h2>
         <p id="lb-you"></p>
         <div id="lb-content"><p>Loading…</p></div>
+      </div>
+    </div>
+
+    <div id="name-overlay" class="overlay hidden">
+      <div class="card" id="name-card">
+        <h2>Who's playing?</h2>
+        <p>Pick your name so your scores count on the leaderboard.</p>
+        <div class="row" style="margin-bottom:14px;">
+          <input id="picker-input" maxlength="20" placeholder="Your name" autocomplete="off">
+          <button id="picker-play" class="primary">Play</button>
+        </div>
+        <p id="picker-known-label" style="margin-bottom:6px;">Already on the leaderboard — that you?</p>
+        <div id="picker-chips"></div>
+        <p style="margin-top:14px; margin-bottom:0;"><a id="picker-skip">Skip — play without the leaderboard</a></p>
       </div>
     </div>
   </div>
@@ -348,6 +382,70 @@
     if (playerName) localStorage.setItem("sokoban-player", playerName);
   }
 
+  // ---------- name picker ----------
+  let knownNames = null;
+  async function loadKnownNames() {
+    if (knownNames) return knownNames;
+    try {
+      const res = await lbFetch("/rest/v1/best_scores?select=player&limit=10000");
+      if (!res.ok) throw new Error(res.status);
+      const seen = new Map();  // lowercase -> first-seen casing
+      for (const r of await res.json()) {
+        const k = r.player.toLowerCase();
+        if (!seen.has(k)) seen.set(k, r.player);
+      }
+      knownNames = [...seen.values()].sort((a, b) => a.localeCompare(b));
+    } catch {
+      knownNames = [];
+    }
+    return knownNames;
+  }
+
+  let pickerDone = null;
+  async function openNamePicker(onDone) {
+    pickerDone = onDone || null;
+    document.getElementById("name-overlay").classList.remove("hidden");
+    const input = document.getElementById("picker-input");
+    input.value = playerName;
+    document.getElementById("picker-chips").innerHTML = "<p>Looking up players…</p>";
+    const names = await loadKnownNames();
+    renderChips(names, "");  // show everyone until the player starts typing
+    input.focus();
+    input.select();
+  }
+
+  function renderChips(names, filter) {
+    const chipsEl = document.getElementById("picker-chips");
+    chipsEl.innerHTML = "";
+    document.getElementById("picker-known-label").style.display = names.length ? "" : "none";
+    const f = filter.trim().toLowerCase();
+    const shown = names.filter(n => !f || n.toLowerCase().includes(f));
+    for (const n of shown.slice(0, 40)) {
+      const b = document.createElement("button");
+      b.textContent = n;
+      b.addEventListener("click", () => finishPicker(n));
+      chipsEl.appendChild(b);
+    }
+    if (!shown.length && names.length) {
+      chipsEl.innerHTML = "<p>No matching names — you'll be new here!</p>";
+    }
+  }
+
+  function finishPicker(name) {
+    const t = name.trim().slice(0, 20);
+    if (!t) return;
+    // an existing name that differs only in case/spacing wins: no duplicates
+    const canon = (knownNames || []).find(n => n.toLowerCase() === t.toLowerCase());
+    setPlayerName(canon || t);
+    document.getElementById("name-overlay").classList.add("hidden");
+    document.getElementById("name-row").style.display = "none";
+    if (won) submitScore(levelIndex, moves, pushes);  // joined right after clearing a level
+    const cb = pickerDone;
+    pickerDone = null;
+    if (cb) cb();
+    draw();
+  }
+
   async function openLeaderboard() {
     hideOverlays();
     document.getElementById("lb-overlay").classList.remove("hidden");
@@ -361,12 +459,18 @@
       const a = document.createElement("a");
       a.textContent = "change name";
       a.addEventListener("click", () => {
-        const n = window.prompt("Your leaderboard name:", playerName);
-        if (n && n.trim()) { setPlayerName(n); openLeaderboard(); }
+        document.getElementById("lb-overlay").classList.add("hidden");
+        openNamePicker(() => openLeaderboard());
       });
       youEl.append(a);
     } else {
-      youEl.textContent = "Finish a level and enter a name to join the board.";
+      const a = document.createElement("a");
+      a.textContent = "Join the leaderboard";
+      a.addEventListener("click", () => {
+        document.getElementById("lb-overlay").classList.add("hidden");
+        openNamePicker(() => openLeaderboard());
+      });
+      youEl.append(a, " so your scores count.");
     }
     const content = document.getElementById("lb-content");
     content.innerHTML = "<p>Loading…</p>";
@@ -725,12 +829,11 @@
   }
 
   function hideOverlays() {
-    document.getElementById("win-overlay").classList.add("hidden");
-    document.getElementById("select-overlay").classList.add("hidden");
-    document.getElementById("lb-overlay").classList.add("hidden");
+    for (const id of ["win-overlay", "select-overlay", "lb-overlay", "name-overlay"])
+      document.getElementById(id).classList.add("hidden");
   }
   function overlayShown() {
-    return ["win-overlay", "select-overlay", "lb-overlay"].some(
+    return ["win-overlay", "select-overlay", "lb-overlay", "name-overlay"].some(
       id => !document.getElementById(id).classList.contains("hidden"));
   }
 
@@ -791,15 +894,20 @@
     if (e.target.id === "lb-overlay") { hideOverlays(); draw(); }
   });
   if (lbEnabled) document.getElementById("btn-board").style.display = "";
-  document.getElementById("name-input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") document.getElementById("btn-save-name").click();
+  document.getElementById("btn-join").addEventListener("click", () => openNamePicker());
+  document.getElementById("picker-play").addEventListener("click", () =>
+    finishPicker(document.getElementById("picker-input").value));
+  document.getElementById("picker-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") finishPicker(e.target.value);
   });
-  document.getElementById("btn-save-name").addEventListener("click", () => {
-    const v = document.getElementById("name-input").value;
-    if (!v.trim()) return;
-    setPlayerName(v);
-    document.getElementById("name-row").style.display = "none";
-    submitScore(levelIndex, moves, pushes);
+  document.getElementById("picker-input").addEventListener("input", (e) =>
+    renderChips(knownNames || [], e.target.value));
+  document.getElementById("picker-skip").addEventListener("click", () => {
+    document.getElementById("name-overlay").classList.add("hidden");
+    const cb = pickerDone;
+    pickerDone = null;
+    if (cb) cb();
+    draw();
   });
 
   window.addEventListener("resize", resize);
@@ -813,6 +921,7 @@
     const start = Math.min(cur.i, CUR().levels.length - 1);
     levelIndex = (start <= maxUnlocked(CUR()) || progress.best[bkey(colId, start)]) ? start : 0;
     parseLevel(levelIndex);
+    if (lbEnabled && !playerName) openNamePicker();
   }
 })();
 </script>
