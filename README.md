@@ -6,8 +6,9 @@ A classic Sokoban puzzle game in the browser — push every box onto a goal squa
 
 ## Features
 
-- 20 levels of increasing difficulty, every one machine-verified solvable
-- Levels are a mix of Microban puzzles (David W. Skinner), custom designs, and the original 1982 Sokoban level 1
+- Main quest: 20 levels of increasing difficulty, every one machine-verified solvable — a mix of Microban puzzles (David W. Skinner), custom designs, and the original 1982 Sokoban level 1
+- Side quest packs: **Microban** (155 levels, David W. Skinner), **Novoban** (50 beginner levels, François Marques, ordered by solver-measured difficulty), and **Sasquatch** (50 advanced levels, David W. Skinner) — canonical level files, solver-checked for corruption
+- Global leaderboard: overall ranking plus per-level bests (see `supabase-setup.sql` / `supabase-migration-collections.sql`)
 - Arrow keys / WASD to move, **Z** undo, **R** restart, **L** level select
 - Swipe controls on touch screens
 - Move/push counters and per-level best scores, saved in your browser

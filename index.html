@@ -138,21 +138,41 @@
   .card .row { display: flex; gap: 10px; justify-content: center; }
 
   /* Level select */
+  #select-card { max-height: 88%; display: flex; flex-direction: column; }
+  #col-tabs {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 4px 0 8px;
+  }
+  #col-tabs button.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #201404;
+    font-weight: 600;
+  }
+  #col-desc { font-size: 12px; margin-bottom: 10px; min-height: 1em; }
   #level-grid {
     display: grid;
-    grid-template-columns: repeat(5, 64px);
-    gap: 10px;
+    grid-template-columns: repeat(auto-fill, 56px);
+    justify-content: center;
+    gap: 8px;
     margin: 6px 0 4px;
+    width: min(76vw, 420px);
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
   }
   .lvl-btn {
-    width: 64px; height: 64px;
+    width: 56px; height: 56px;
     border-radius: 10px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 2px;
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
   }
   .lvl-btn small { font-size: 10px; font-weight: 400; color: var(--muted); }
@@ -236,6 +256,8 @@
     <div id="select-overlay" class="overlay hidden">
       <div class="card" id="select-card">
         <h2>Select Level</h2>
+        <div id="col-tabs"></div>
+        <p id="col-desc"></p>
         <div id="level-grid"></div>
         <p style="margin-top:12px; margin-bottom:0;">Finish a level to unlock the next.</p>
       </div>
@@ -260,6 +282,7 @@
 
 <script src="config.js"></script>
 <script src="levels.js"></script>
+<script src="packs.js"></script>
 <script>
 (() => {
   "use strict";
@@ -276,8 +299,19 @@
   function saveProgress() {
     try { localStorage.setItem(LS_KEY, JSON.stringify(progress)); } catch {}
   }
-  let progress = loadProgress();          // { best: {i: {moves,pushes}}, current: i }
+  let progress = loadProgress();          // { best: {key: {moves,pushes}}, current: {c,i} }
   progress.best = progress.best || {};
+
+  // ---------- collections ----------
+  // "main" keeps plain numeric best-keys so pre-collection progress carries over.
+  const COLLECTIONS = [
+    { id: "main", name: "Main Quest", by: "", levels: window.LEVELS },
+    ...(window.PACKS || []),
+  ];
+  const colById = id => COLLECTIONS.find(c => c.id === id) || COLLECTIONS[0];
+  let colId = "main";
+  const CUR = () => colById(colId);
+  const bkey = (c, i) => (c === "main" ? String(i) : c + ":" + i);
 
   // ---------- leaderboard (Supabase REST) ----------
   const LB = window.LEADERBOARD || {};
@@ -299,10 +333,12 @@
 
   function submitScore(levelIdx, m, p) {
     if (!lbEnabled || !playerName) return;
+    const row = { player: playerName, level: levelIdx + 1, moves: m, pushes: p };
+    if (colId !== "main") row.collection = colId;  // omitted for main: works pre-migration
     lbFetch("/rest/v1/scores", {
       method: "POST",
       headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ player: playerName, level: levelIdx + 1, moves: m, pushes: p }),
+      body: JSON.stringify(row),
     }).catch(() => {});
   }
 
@@ -335,7 +371,11 @@
     content.innerHTML = "<p>Loading…</p>";
     let rows;
     try {
-      const res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes&limit=10000");
+      let res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes,collection&limit=10000");
+      if (!res.ok) {
+        // backend not migrated to collections yet — legacy shape, main quest only
+        res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes&limit=10000");
+      }
       if (!res.ok) throw new Error(res.status);
       rows = await res.json();
     } catch {
@@ -348,27 +388,39 @@
       return;
     }
     const me = playerName.toLowerCase();
+    for (const r of rows) r.collection = r.collection || "main";
+    const hasSide = rows.some(r => r.collection !== "main");
 
-    // overall: rank by levels cleared desc, then total moves asc
+    // overall: main-quest levels cleared desc, then total main moves asc
     const byPlayer = new Map();
     for (const r of rows) {
       const k = r.player.toLowerCase();
-      if (!byPlayer.has(k)) byPlayer.set(k, { name: r.player, cleared: 0, moves: 0 });
+      if (!byPlayer.has(k)) byPlayer.set(k, { name: r.player, cleared: 0, moves: 0, side: 0 });
       const s = byPlayer.get(k);
-      s.cleared++; s.moves += r.moves;
+      if (r.collection === "main") { s.cleared++; s.moves += r.moves; }
+      else s.side++;
     }
     const overall = [...byPlayer.values()]
-      .sort((a, b) => b.cleared - a.cleared || a.moves - b.moves).slice(0, 20);
-    content.appendChild(makeTable("Overall", ["#", "Player", "Cleared", "Total moves"],
-      overall.map((s, i) => [i + 1, s.name, s.cleared + " / " + LEVELS.length, s.moves]),
+      .sort((a, b) => b.cleared - a.cleared || a.moves - b.moves || b.side - a.side)
+      .slice(0, 20);
+    const headers = ["#", "Player", "Cleared", "Total moves"];
+    if (hasSide) headers.push("Side quests");
+    content.appendChild(makeTable("Overall", headers,
+      overall.map((s, i) => {
+        const row = [i + 1, s.name, s.cleared + " / " + COLLECTIONS[0].levels.length, s.moves];
+        if (hasSide) row.push(s.side);
+        return row;
+      }),
       overall.map(s => s.name.toLowerCase() === me)));
 
-    // current level
-    const lvlRows = rows.filter(r => r.level === levelIndex + 1)
+    // current level of the current collection
+    const lvlRows = rows.filter(r => r.level === levelIndex + 1 && r.collection === colId)
       .sort((a, b) => a.moves - b.moves || a.pushes - b.pushes).slice(0, 10);
     if (lvlRows.length) {
+      const col = CUR();
+      const where = colId === "main" ? "Level" : col.name;
       content.appendChild(makeTable(
-        `Level ${levelIndex + 1} — ${LEVELS[levelIndex].name}`,
+        `${where} ${levelIndex + 1}`,
         ["#", "Player", "Moves", "Pushes"],
         lvlRows.map((r, i) => [i + 1, r.player, r.moves, r.pushes]),
         lvlRows.map(r => r.player.toLowerCase() === me)));
@@ -398,10 +450,10 @@
     return tbl;
   }
 
-  function maxUnlocked() {
+  function maxUnlocked(col) {
     let u = 0;
-    for (let i = 0; i < LEVELS.length; i++) {
-      if (progress.best[i]) u = Math.min(i + 1, LEVELS.length - 1);
+    for (let i = 0; i < col.levels.length; i++) {
+      if (progress.best[bkey(col.id, i)]) u = Math.min(i + 1, col.levels.length - 1);
     }
     return u;
   }
@@ -418,7 +470,7 @@
   const key = (x, y) => x + "," + y;
 
   function parseLevel(i) {
-    const rows = LEVELS[i].map;
+    const rows = CUR().levels[i].map;
     grid = { w: 0, h: rows.length, walls: new Set(), goals: new Set(), floors: new Set() };
     boxes = new Set();
     history = [];
@@ -452,7 +504,7 @@
         }
       }
     }
-    progress.current = i;
+    progress.current = { c: colId, i };
     saveProgress();
     updateHud();
     resize();
@@ -500,15 +552,19 @@
   function checkWin() {
     for (const b of boxes) if (!grid.goals.has(b)) return;
     won = true;
-    const prev = progress.best[levelIndex];
+    const k = bkey(colId, levelIndex);
+    const prev = progress.best[k];
     if (!prev || moves < prev.moves) {
-      progress.best[levelIndex] = { moves, pushes };
+      progress.best[k] = { moves, pushes };
       saveProgress();
     }
-    const isLast = levelIndex === LEVELS.length - 1;
+    const isLast = levelIndex === CUR().levels.length - 1;
+    const finale = colId === "main"
+      ? `That was the last level — you beat the game! 🏆`
+      : `You cleared the whole ${CUR().name} pack! 🏆`;
     document.getElementById("win-stats").innerHTML =
       `Solved in <b>${moves}</b> moves / <b>${pushes}</b> pushes` +
-      (isLast ? `<br><br>That was the last level — you beat the game! 🏆` : "");
+      (isLast ? `<br><br>${finale}` : "");
     document.getElementById("btn-next").style.display = isLast ? "none" : "";
     document.getElementById("name-row").style.display = (lbEnabled && !playerName) ? "" : "none";
     submitScore(levelIndex, moves, pushes);
@@ -607,23 +663,41 @@
   function updateHud() {
     document.getElementById("moves").textContent = moves;
     document.getElementById("pushes").textContent = pushes;
-    const best = progress.best[levelIndex];
+    const best = progress.best[bkey(colId, levelIndex)];
     document.getElementById("best").textContent = best ? best.moves : "–";
+    const col = CUR();
+    const lvName = col.levels[levelIndex].name;
+    const where = colId === "main" ? "Level" : col.name;
+    // pack level names that are just numbers would duplicate the counter
+    const suffix = /^\d+$/.test(lvName) ? "" : ` — <b>${lvName}</b>`;
     document.getElementById("level-label").innerHTML =
-      `Level <b>${levelIndex + 1}</b> / ${LEVELS.length} — <b>${LEVELS[levelIndex].name}</b>`;
+      `${where} <b>${levelIndex + 1}</b> / ${col.levels.length}${suffix}`;
     document.getElementById("btn-undo").disabled = !history.length || won;
   }
 
-  function buildLevelGrid() {
+  function buildLevelGrid(showColId = colId) {
+    const col = colById(showColId);
+    const tabsEl = document.getElementById("col-tabs");
+    tabsEl.innerHTML = "";
+    COLLECTIONS.forEach(c => {
+      const t = document.createElement("button");
+      t.textContent = c.name;
+      if (c.id === col.id) t.className = "active";
+      t.addEventListener("click", () => buildLevelGrid(c.id));
+      tabsEl.appendChild(t);
+    });
+    const cleared = col.levels.filter((_, i) => progress.best[bkey(col.id, i)]).length;
+    document.getElementById("col-desc").textContent =
+      (col.by ? `by ${col.by} · ` : "") + `${cleared} / ${col.levels.length} cleared`;
     const gridEl = document.getElementById("level-grid");
     gridEl.innerHTML = "";
-    const unlocked = maxUnlocked();
-    LEVELS.forEach((lv, i) => {
+    const unlocked = maxUnlocked(col);
+    col.levels.forEach((lv, i) => {
       const b = document.createElement("button");
       b.className = "lvl-btn";
-      const best = progress.best[i];
+      const best = progress.best[bkey(col.id, i)];
       if (best) b.classList.add("done");
-      if (i === levelIndex) b.classList.add("current");
+      if (col.id === colId && i === levelIndex) b.classList.add("current");
       if (i > unlocked && !best) {
         b.classList.add("locked");
         b.disabled = true;
@@ -632,6 +706,7 @@
         b.innerHTML = `${i + 1}<small>${best ? best.moves + " mv" : "new"}</small>`;
         b.addEventListener("click", () => {
           hideOverlays();
+          colId = col.id;
           levelIndex = i;
           parseLevel(i);
         });
@@ -690,7 +765,7 @@
 
   function nextLevel() {
     hideOverlays();
-    if (levelIndex < LEVELS.length - 1) levelIndex++;
+    if (levelIndex < CUR().levels.length - 1) levelIndex++;
     parseLevel(levelIndex);
   }
 
@@ -721,9 +796,15 @@
   window.addEventListener("resize", resize);
 
   // ---------- boot ----------
-  const start = Math.min(progress.current || 0, LEVELS.length - 1);
-  levelIndex = (start <= maxUnlocked() || progress.best[start]) ? start : 0;
-  parseLevel(levelIndex);
+  {
+    let cur = progress.current;
+    if (typeof cur === "number") cur = { c: "main", i: cur };  // pre-collections save
+    if (!cur || !colById(cur.c) || typeof cur.i !== "number") cur = { c: "main", i: 0 };
+    colId = colById(cur.c).id;
+    const start = Math.min(cur.i, CUR().levels.length - 1);
+    levelIndex = (start <= maxUnlocked(CUR()) || progress.best[bkey(colId, start)]) ? start : 0;
+    parseLevel(levelIndex);
+  }
 })();
 </script>
 </body>
