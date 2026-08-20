@@ -383,6 +383,7 @@
   }
 
   // ---------- name picker ----------
+  const HIDDEN_CHIPS = ["claude"];  // test accounts, not real players
   let knownNames = null;
   async function loadKnownNames() {
     if (knownNames) return knownNames;
@@ -394,7 +395,9 @@
         const k = r.player.toLowerCase();
         if (!seen.has(k)) seen.set(k, r.player);
       }
-      knownNames = [...seen.values()].sort((a, b) => a.localeCompare(b));
+      knownNames = [...seen.values()]
+        .filter(n => !HIDDEN_CHIPS.includes(n.toLowerCase()))
+        .sort((a, b) => a.localeCompare(b));
     } catch {
       knownNames = [];
     }
