@@ -452,6 +452,39 @@
     });
   }
 
+  // Fetch best_scores, newest schema first, falling back for un-migrated
+  // backends. Throws on network/server failure. Rows are normalized:
+  // collection defaults to "main", min_pushes to pushes.
+  async function fetchBestScores() {
+    const selects = [
+      "player,level,moves,pushes,collection,min_pushes",
+      "player,level,moves,pushes,collection",
+      "player,level,moves,pushes",
+    ];
+    let res;
+    for (const s of selects) {
+      res = await lbFetch(`/rest/v1/best_scores?select=${s}&limit=10000`);
+      if (res.ok) {
+        const rows = await res.json();
+        for (const r of rows) {
+          r.collection = r.collection || "main";
+          if (r.min_pushes == null) r.min_pushes = r.pushes;
+        }
+        rows.hasCollections = s.includes("collection");
+        return rows;
+      }
+    }
+    throw new Error(res && res.status);
+  }
+
+  // stars for a leaderboard row, from that player's fewest-pushes run
+  function rowStars(r) {
+    const col = COLLECTIONS.find(x => x.id === r.collection);
+    const lv = col && col.levels[r.level - 1];
+    if (!lv || !lv.par) return 0;
+    return starsFor(col, r.level - 1, { moves: r.moves, pushes: r.min_pushes });
+  }
+
   function submitScore(levelIdx, m, p) {
     if (!lbEnabled || !playerName) return;
     const row = { player: playerName, level: levelIdx + 1, moves: m, pushes: p };
@@ -497,10 +530,7 @@
     if (!lbEnabled || !playerName) return;
     let rows;
     try {
-      let res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes,collection&limit=10000");
-      if (!res.ok) res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes&limit=10000");
-      if (!res.ok) throw new Error(res.status);
-      rows = await res.json();
+      rows = await fetchBestScores();
     } catch {
       // a single flaky request must not cost the whole session its restore
       if (retry < 3) setTimeout(() => syncProgressFromBoard(retry + 1), 3000 * (retry + 1));
@@ -509,13 +539,17 @@
     const me = playerName.toLowerCase();
     for (const r of rows) {
       if (r.player.toLowerCase() !== me) continue;
-      const c = r.collection || "main";
-      const col = COLLECTIONS.find(x => x.id === c);
+      const col = COLLECTIONS.find(x => x.id === r.collection);
       if (!col || r.level < 1 || r.level > col.levels.length) continue;
-      const k = bkey(c, r.level - 1);
+      const k = bkey(r.collection, r.level - 1);
       const cur = progress.best[k];
-      if (!cur || r.moves < cur.moves) {
-        progress.best[k] = { moves: r.moves, pushes: r.pushes };
+      const cand = { moves: r.moves, pushes: r.min_pushes };
+      if (!cur) progress.best[k] = cand;
+      else if (cand.moves < cur.moves || cand.pushes < cur.pushes) {
+        progress.best[k] = {
+          moves: Math.min(cur.moves, cand.moves),
+          pushes: Math.min(cur.pushes, cand.pushes),
+        };
       }
     }
     saveProgress();
@@ -606,16 +640,9 @@
     }
     const content = document.getElementById("lb-content");
     content.innerHTML = "<p>Loading…</p>";
-    let rows, migrated = true;
+    let rows;
     try {
-      let res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes,collection&limit=10000");
-      if (!res.ok) {
-        // backend not migrated to collections yet — legacy shape, main quest only
-        migrated = false;
-        res = await lbFetch("/rest/v1/best_scores?select=player,level,moves,pushes&limit=10000");
-      }
-      if (!res.ok) throw new Error(res.status);
-      rows = await res.json();
+      rows = await fetchBestScores();
     } catch {
       content.innerHTML = "<p>Couldn't reach the leaderboard — try again in a moment.</p>";
       return;
@@ -626,29 +653,32 @@
       return;
     }
     const me = playerName.toLowerCase();
-    for (const r of rows) r.collection = r.collection || "main";
+    const migrated = rows.hasCollections;
 
-    // overall: main-quest levels cleared desc, then total main moves asc,
-    // then side-quest levels cleared desc; 🏆 marks a completed pack
+    // overall: main-quest levels cleared desc, then total stars desc, then
+    // total main moves asc; 🏆 marks a completed pack
     const packCols = migrated ? COLLECTIONS.slice(1) : [];
     const byPlayer = new Map();
     for (const r of rows) {
       const k = r.player.toLowerCase();
-      if (!byPlayer.has(k)) byPlayer.set(k, { name: r.player, cleared: 0, moves: 0, packs: {} });
+      if (!byPlayer.has(k)) byPlayer.set(k, { name: r.player, cleared: 0, moves: 0, stars: 0, packs: {} });
       const s = byPlayer.get(k);
       if (r.collection === "main") { s.cleared++; s.moves += r.moves; }
       else s.packs[r.collection] = (s.packs[r.collection] || 0) + 1;
+      s.stars += rowStars(r);
     }
     const sideTotal = s => Object.values(s.packs).reduce((a, b) => a + b, 0);
     const overall = [...byPlayer.values()]
-      .sort((a, b) => b.cleared - a.cleared || a.moves - b.moves || sideTotal(b) - sideTotal(a))
+      .sort((a, b) => b.cleared - a.cleared || b.stars - a.stars ||
+                      a.moves - b.moves || sideTotal(b) - sideTotal(a))
       .slice(0, 20);
     const mainTotal = COLLECTIONS[0].levels.length;
-    const headers = ["#", "Player", "Main", "Moves", ...packCols.map(c => c.name)];
+    const headers = ["#", "Player", "Main", "★", "Moves", ...packCols.map(c => c.name)];
     content.appendChild(makeTable("Overall", headers,
       overall.map((s, i) => [
         i + 1, s.name,
         s.cleared + "/" + mainTotal + (s.cleared === mainTotal ? " 🏆" : ""),
+        s.stars,
         s.moves,
         ...packCols.map(c => {
           const n = s.packs[c.id] || 0;
@@ -664,11 +694,16 @@
     if (lvlRows.length) {
       const col = CUR();
       const where = colId === "main" ? "Level" : col.name;
-      const parNote = col.levels[levelIndex].par ? ` · par ${col.levels[levelIndex].par}` : "";
+      const par = col.levels[levelIndex].par;
+      const parNote = par ? ` · par ${par}` : "";
       content.appendChild(makeTable(
         `${where} ${levelIndex + 1}${parNote}`,
-        ["#", "Player", "Moves", "Pushes"],
-        lvlRows.map((r, i) => [i + 1, r.player, r.moves, r.pushes]),
+        par ? ["#", "Player", "Moves", "Pushes", "★"] : ["#", "Player", "Moves", "Pushes"],
+        lvlRows.map((r, i) => {
+          const row = [i + 1, r.player, r.moves, r.pushes];
+          if (par) row.push("★".repeat(rowStars(r)) || "–");
+          return row;
+        }),
         lvlRows.map(r => r.player.toLowerCase() === me)));
     }
   }
@@ -691,6 +726,7 @@
         const td = r.insertCell();
         td.textContent = c;
         if (j !== 1) td.className = "num";
+        if (headers[j] === "★") td.classList.add("stars");
       });
     });
     return tbl;
