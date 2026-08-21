@@ -70,8 +70,12 @@
     gap: 8px;
     flex-wrap: wrap;
   }
-  #stats { display: flex; gap: 16px; font-size: 14px; color: var(--muted); }
+  #stats { display: flex; gap: 16px; font-size: 14px; color: var(--muted); align-items: center; }
   #stats b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .stars { color: #f5c04e; letter-spacing: 1px; }
+  .stars .dim { color: #3a4056; }
+  .win-stars .stars { font-size: 30px; letter-spacing: 4px; line-height: 1.6; }
   #buttons { display: flex; gap: 8px; }
   button {
     background: var(--panel-2);
@@ -295,7 +299,8 @@
     <div id="stats">
       <span>Moves <b id="moves">0</b></span>
       <span>Pushes <b id="pushes">0</b></span>
-      <span>Best <b id="best">–</b></span>
+      <span>Par <b id="par">–</b></span>
+      <span id="hud-stars"></span>
     </div>
     <div id="buttons">
       <button id="btn-undo" title="Undo (Z)">Undo</button>
@@ -363,9 +368,10 @@
     <span>swipe to move on touch screens</span>
   </footer>
 
-<script src="config.js"></script>
-<script src="levels.js"></script>
-<script src="packs.js"></script>
+<!-- bump the ?v= numbers when these files change, so cached copies can't pair with new code -->
+<script src="config.js?v=1"></script>
+<script src="levels.js?v=2"></script>
+<script src="packs.js?v=2"></script>
 <script>
 (() => {
   "use strict";
@@ -411,6 +417,22 @@
   let colId = "main";
   const CUR = () => colById(colId);
   const bkey = (c, i) => (c === "main" ? String(i) : c + ":" + i);
+
+  // ---------- par & stars ----------
+  // par = solver-verified minimum pushes. 3 stars: solved at par (provably
+  // unbeatable), 2: within 1.5x par, 1: cleared. Levels without a verified
+  // par (the hardest pack levels) show a plain check instead of stars.
+  function starsFor(col, i, best) {
+    if (!best) return 0;
+    const par = col.levels[i].par;
+    if (!par) return 1;
+    if (best.pushes <= par) return 3;
+    if (best.pushes <= Math.ceil(par * 1.5)) return 2;
+    return 1;
+  }
+  function starGlyphs(n) {
+    return `<span class="stars">${"★".repeat(n)}<span class="dim">${"★".repeat(3 - n)}</span></span>`;
+  }
 
   // ---------- leaderboard (Supabase REST) ----------
   const LB = window.LEADERBOARD || {};
@@ -642,8 +664,9 @@
     if (lvlRows.length) {
       const col = CUR();
       const where = colId === "main" ? "Level" : col.name;
+      const parNote = col.levels[levelIndex].par ? ` · par ${col.levels[levelIndex].par}` : "";
       content.appendChild(makeTable(
-        `${where} ${levelIndex + 1}`,
+        `${where} ${levelIndex + 1}${parNote}`,
         ["#", "Player", "Moves", "Pushes"],
         lvlRows.map((r, i) => [i + 1, r.player, r.moves, r.pushes]),
         lvlRows.map(r => r.player.toLowerCase() === me)));
@@ -779,15 +802,32 @@
     won = true;
     const k = bkey(colId, levelIndex);
     const prev = progress.best[k];
-    if (!prev || moves < prev.moves) {
-      progress.best[k] = { moves, pushes };
+    // moves and pushes improve independently: stars are push-based
+    const nb = {
+      moves: prev ? Math.min(prev.moves, moves) : moves,
+      pushes: prev ? Math.min(prev.pushes, pushes) : pushes,
+    };
+    if (!prev || nb.moves < prev.moves || nb.pushes < prev.pushes) {
+      progress.best[k] = nb;
       saveProgress();
     }
-    const isLast = levelIndex === CUR().levels.length - 1;
+    const col = CUR();
+    const par = col.levels[levelIndex].par;
+    const runStars = starsFor(col, levelIndex, { moves, pushes });
+    let starLine = "";
+    if (par) {
+      const label =
+        runStars === 3 ? "Push-perfect — solved at par!" :
+        runStars === 2 ? `Close! Par is ${par} pushes — match it for ★★★` :
+        `Par is ${par} pushes`;
+      starLine = `<span class="win-stars">${starGlyphs(runStars)}</span><br>${label}<br><br>`;
+    }
+    const isLast = levelIndex === col.levels.length - 1;
     const finale = colId === "main"
       ? `That was the last level — you beat the game! 🏆`
-      : `You cleared the whole ${CUR().name} pack! 🏆`;
+      : `You cleared the whole ${col.name} pack! 🏆`;
     document.getElementById("win-stats").innerHTML =
+      starLine +
       `Solved in <b>${moves}</b> moves / <b>${pushes}</b> pushes` +
       (isLast ? `<br><br>${finale}` : "");
     document.getElementById("btn-next").style.display = isLast ? "none" : "";
@@ -889,7 +929,10 @@
     document.getElementById("moves").textContent = moves;
     document.getElementById("pushes").textContent = pushes;
     const best = progress.best[bkey(colId, levelIndex)];
-    document.getElementById("best").textContent = best ? best.moves : "–";
+    const par = CUR().levels[levelIndex].par;
+    document.getElementById("par").textContent = par || "–";
+    document.getElementById("hud-stars").innerHTML =
+      best ? starGlyphs(starsFor(CUR(), levelIndex, best)) : "";
     const col = CUR();
     const lvName = col.levels[levelIndex].name;
     const where = colId === "main" ? "Level" : col.name;
@@ -911,9 +954,15 @@
       t.addEventListener("click", () => buildLevelGrid(c.id));
       tabsEl.appendChild(t);
     });
-    const cleared = col.levels.filter((_, i) => progress.best[bkey(col.id, i)]).length;
+    let cleared = 0, gotStars = 0, maxStars = 0;
+    col.levels.forEach((lv, i) => {
+      const best = progress.best[bkey(col.id, i)];
+      if (best) cleared++;
+      if (lv.par) { maxStars += 3; gotStars += Math.min(3, starsFor(col, i, best)); }
+    });
     document.getElementById("col-desc").textContent =
-      (col.by ? `by ${col.by} · ` : "") + `${cleared} / ${col.levels.length} cleared`;
+      (col.by ? `by ${col.by} · ` : "") +
+      `${cleared} / ${col.levels.length} cleared · ${gotStars} / ${maxStars} ★`;
     const gridEl = document.getElementById("level-grid");
     gridEl.innerHTML = "";
     const unlocked = maxUnlocked(col);
@@ -928,7 +977,11 @@
         b.disabled = true;
         b.innerHTML = `🔒`;
       } else {
-        b.innerHTML = `${i + 1}<small>${best ? best.moves + " mv" : "new"}</small>`;
+        const n = starsFor(col, i, best);
+        const sub = !best ? "new"
+          : lv.par ? `<span class="stars">${"★".repeat(n)}<span class="dim">${"★".repeat(3 - n)}</span></span>`
+          : "✓";
+        b.innerHTML = `${i + 1}<small>${sub}</small>`;
         b.addEventListener("click", () => {
           hideOverlays();
           colId = col.id;

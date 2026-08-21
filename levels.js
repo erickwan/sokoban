@@ -13,7 +13,8 @@ window.LEVELS =
       "# $$   #",
       "#.  @ .#",
       "########"
-    ]
+    ],
+    "par": 6
   },
   {
     "name": "Double Trouble",
@@ -25,7 +26,8 @@ window.LEVELS =
       "# .* #",
       "#    #",
       "######"
-    ]
+    ],
+    "par": 3
   },
   {
     "name": "Around the Block",
@@ -36,7 +38,8 @@ window.LEVELS =
       "#   #   #",
       "#.  #  .#",
       "#########"
-    ]
+    ],
+    "par": 6
   },
   {
     "name": "Perimeter",
@@ -48,7 +51,8 @@ window.LEVELS =
       "# $##$ #",
       "#.    .#",
       "########"
-    ]
+    ],
+    "par": 8
   },
   {
     "name": "Pinwheel",
@@ -60,7 +64,8 @@ window.LEVELS =
       "#  .$. #",
       "#      #",
       "########"
-    ]
+    ],
+    "par": 6
   },
   {
     "name": "Checkerboard",
@@ -73,7 +78,8 @@ window.LEVELS =
       "# $.$ #",
       "#  @  #",
       "#######"
-    ]
+    ],
+    "par": 6
   },
   {
     "name": "Conveyor",
@@ -84,7 +90,8 @@ window.LEVELS =
       "#      #",
       "#####  #",
       "    ####"
-    ]
+    ],
+    "par": 7
   },
   {
     "name": "Switcheroo",
@@ -96,7 +103,8 @@ window.LEVELS =
       "#  $ #",
       "#  ###",
       "####"
-    ]
+    ],
+    "par": 8
   },
   {
     "name": "Quad Split",
@@ -107,7 +115,8 @@ window.LEVELS =
       "# $$ $$ #",
       "#   @   #",
       "#########"
-    ]
+    ],
+    "par": 10
   },
   {
     "name": "Tight Squeeze",
@@ -119,7 +128,8 @@ window.LEVELS =
       " ##  #",
       "  ##.#",
       "   ###"
-    ]
+    ],
+    "par": 10
   },
   {
     "name": "Warehouse Shift",
@@ -131,7 +141,8 @@ window.LEVELS =
       "#  $  $  #",
       "#.  ##  .#",
       "##########"
-    ]
+    ],
+    "par": 12
   },
   {
     "name": "Corner Work",
@@ -142,7 +153,8 @@ window.LEVELS =
       "# #  #$ #",
       "# . .#@ #",
       "#########"
-    ]
+    ],
+    "par": 13
   },
   {
     "name": "Two Rooms",
@@ -153,7 +165,8 @@ window.LEVELS =
       "# $@   .  #",
       "#    #    #",
       "###########"
-    ]
+    ],
+    "par": 14
   },
   {
     "name": "Roundabout",
@@ -166,7 +179,8 @@ window.LEVELS =
       "#   $$   #",
       "#    @   #",
       "##########"
-    ]
+    ],
+    "par": 14
   },
   {
     "name": "Relay",
@@ -176,7 +190,8 @@ window.LEVELS =
       "#@$$ ##    #",
       "#        ..#",
       "############"
-    ]
+    ],
+    "par": 16
   },
   {
     "name": "Storage Room",
@@ -189,7 +204,8 @@ window.LEVELS =
       "# $# #.# #",
       "#  #  .  #",
       "##########"
-    ]
+    ],
+    "par": 27
   },
   {
     "name": "Four Corners",
@@ -203,7 +219,8 @@ window.LEVELS =
       "#  $#$  #",
       "#.  #  .#",
       "#########"
-    ]
+    ],
+    "par": 28
   },
   {
     "name": "The Hallway",
@@ -214,7 +231,8 @@ window.LEVELS =
       "# $ #...   #",
       "#   ########",
       "#####"
-    ]
+    ],
+    "par": 29
   },
   {
     "name": "The Funnel",
@@ -225,7 +243,8 @@ window.LEVELS =
       "#       $ @#",
       "#    #     #",
       "############"
-    ]
+    ],
+    "par": 35
   },
   {
     "name": "The Original",
@@ -241,7 +260,8 @@ window.LEVELS =
       "##### ### #@##  ..#",
       "    #     #########",
       "    #######"
-    ]
+    ],
+    "par": 97
   }
 ]
 ;
