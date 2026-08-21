@@ -386,6 +386,8 @@
     catch { return {}; }
   }
   function mergeProgress(from) {
+    // never merge another identity's progress (e.g. after a name switch reset)
+    if (from.owner && progress.owner && from.owner !== progress.owner) return;
     // union of clears (keep better) + high-water marks; never lose either side
     if (from.best) for (const [k, v] of Object.entries(from.best)) {
       const cur = progress.best[k];
@@ -438,6 +440,8 @@
   const LB = window.LEADERBOARD || {};
   const lbEnabled = !!(LB.url && LB.anonKey);
   let playerName = localStorage.getItem("sokoban-player") || "";
+  // migrate pre-owner saves: claim existing progress for the stored name
+  if (playerName && !progress.owner) progress.owner = playerName.toLowerCase();
 
   function lbFetch(path, opts = {}) {
     return fetch(LB.url + path, {
@@ -498,7 +502,10 @@
 
   function setPlayerName(name) {
     playerName = name.trim().slice(0, 20);
-    if (playerName) localStorage.setItem("sokoban-player", playerName);
+    if (playerName) {
+      localStorage.setItem("sokoban-player", playerName);
+      progress.owner = playerName.toLowerCase();
+    }
   }
 
   // ---------- name picker ----------
@@ -599,13 +606,26 @@
   function finishPicker(name) {
     const t = name.trim().slice(0, 20);
     if (!t) return;
+    const oldName = playerName;
     // an existing name that differs only in case/spacing wins: no duplicates
     const canon = (knownNames || []).find(n => n.toLowerCase() === t.toLowerCase());
     setPlayerName(canon || t);
     document.getElementById("name-overlay").classList.add("hidden");
     document.getElementById("name-row").style.display = "none";
-    if (won) submitScore(levelIndex, moves, pushes);  // joined right after clearing a level
-    syncProgressFromBoard();
+    // a different name is a different person: their progress, not the old
+    // player's, should drive locks/stars. (First-time join keeps the local
+    // progress the anonymous player earned themselves.)
+    const switched = oldName && oldName.toLowerCase() !== playerName.toLowerCase();
+    if (won && !switched) submitScore(levelIndex, moves, pushes);  // joined right after clearing a level
+    if (switched) {
+      hideOverlays();  // the old player's win overlay must not advance the new one
+      progress.best = {};
+      progress.reached = {};
+      colId = "main";
+      levelIndex = 0;
+      parseLevel(0);  // saves the reset under the new owner
+    }
+    syncProgressFromBoard();  // then restore the new player's own clears
     const cb = pickerDone;
     pickerDone = null;
     if (cb) cb();
