@@ -20,9 +20,10 @@ var FIRST_BIB = 1;
 // allocation logic can change without affecting the shirt cutoff.
 var SHIRT_LIMIT = 100;
 
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('Peninsula Bridge Fun Run 2026')
+function doGet(e) {
+  var admin = e && e.parameter && e.parameter.page === 'admin';
+  return HtmlService.createHtmlOutputFromFile(admin ? 'Admin' : 'Index')
+    .setTitle(admin ? 'Fun Run Dashboard' : 'Peninsula Bridge Fun Run 2026')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
@@ -132,6 +133,58 @@ function submitRegistration(payload) {
 
 var HEADERS = ['Bib #', 'First Name', 'Last Name', 'Category', 'T-Shirt Size',
                'Contact Name', 'Contact Email', 'Contact Phone', 'Registered At'];
+
+/**
+ * Summary stats for the organizer dashboard (Admin.html, served at
+ * <web app URL>?page=admin). The password lives OUTSIDE the code, in
+ * Script Properties: Apps Script editor → Project Settings (gear icon)
+ * → Script properties → add ADMIN_PASSWORD. Stats are only computed and
+ * returned after the password check, so nothing leaks to the page
+ * without it.
+ */
+function getAdminStats(password) {
+  var stored = PropertiesService.getScriptProperties().getProperty('ADMIN_PASSWORD');
+  if (!stored) {
+    throw new Error('No admin password is set yet. In the Apps Script editor, open ' +
+                    'Project Settings → Script properties and add ADMIN_PASSWORD.');
+  }
+  Utilities.sleep(300); // slow down password guessing
+  if (String(password || '') !== stored) throw new Error('Incorrect password.');
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  var lastRow = sheet.getLastRow();
+  var rows = lastRow < 2 ? [] : sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues();
+  var iCategory = HEADERS.indexOf('Category');
+  var iShirt = HEADERS.indexOf('T-Shirt Size');
+  var iEmail = HEADERS.indexOf('Contact Email');
+
+  var families = {};
+  var byCategory = {};
+  var byShirtSize = {};
+  var shirtsClaimed = 0;
+  rows.forEach(function (row) {
+    var email = String(row[iEmail]).trim().toLowerCase();
+    if (email) families[email] = true;
+    var category = String(row[iCategory]).trim();
+    if (category.indexOf('Other') === 0) category = 'Other';
+    if (category) byCategory[category] = (byCategory[category] || 0) + 1;
+    var size = String(row[iShirt]).trim();
+    if (size) {
+      byShirtSize[size] = (byShirtSize[size] || 0) + 1;
+      shirtsClaimed += 1;
+    }
+  });
+
+  return {
+    updatedAt: new Date().toISOString(),
+    families: Object.keys(families).length,
+    participants: rows.length,
+    byCategory: byCategory,
+    byShirtSize: byShirtSize,
+    shirtsClaimed: shirtsClaimed,
+    shirtLimit: SHIRT_LIMIT
+  };
+}
 
 /**
  * DELETES all registrations and resets the bib and T-shirt counters to

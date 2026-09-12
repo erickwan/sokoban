@@ -10,21 +10,25 @@ A registration website for the Peninsula Bridge Fun Run on **Sunday, October 4, 
 - **Free T-shirts for the first 100 participants**: once 100 participants are registered, the shirt-size picker is replaced with a friendly "all free tees claimed" note. The cutoff uses a dedicated participant counter (`participantCount` in Script Properties, cross-checked against the sheet's row count) — deliberately independent of bib numbers, so bib allocation logic can change freely. Eligibility is enforced server-side under the same lock as bib assignment, so the 100th shirt can't be double-claimed; if shirts run out mid-submission, the confirmation screen says which runners missed out.
 - Appends one row per participant to the Google Sheet: `Bib #, First Name, Last Name, Category, T-Shirt Size, Contact Name, Contact Email, Contact Phone, Registered At`. The header row is kept in sync automatically (`ensureHeader_`), so column changes in `Code.gs` show up in the sheet on the next submission.
 
+- **Password-protected organizer dashboard** at `<web app URL>?page=admin`: number of families (unique contact emails), total participants, runners by category, and claimed T-shirts by size, with a refresh button. The password is checked server-side (stats are never sent to the browser without it) and lives in Script Properties, not in the code.
+
 ## Files
 
 - `Index.html` — the registration page (form + confirmation screen). Also works standalone as a design preview: when not served by Apps Script it simulates bib numbers and saves nothing.
-- `Code.gs` — the Apps Script backend: serves the page and records submissions.
+- `Admin.html` — the organizer dashboard (login + summary). Standalone it shows clearly-labeled sample data.
+- `Code.gs` — the Apps Script backend: serves both pages, records submissions, and computes dashboard stats.
 
 ## Deploying (one-time, ~5 minutes)
 
 1. Open the registration spreadsheet: **Peninsula Bridge Fun Run 2026 - Registrations** (already created, with the header row in place).
 2. In the sheet, go to **Extensions → Apps Script**.
 3. In the editor, replace the contents of `Code.gs` with this repo's `Code.gs`.
-4. Click **+** next to *Files* → **HTML**, name it exactly `Index`, and paste in this repo's `Index.html` (the whole file).
-5. Click **Deploy → New deployment → Web app**:
+4. Click **+** next to *Files* → **HTML**, name it exactly `Index`, and paste in this repo's `Index.html` (the whole file). Repeat for a second HTML file named exactly `Admin` with this repo's `Admin.html`.
+5. Set the dashboard password: **Project Settings (gear icon) → Script properties → Add script property** — name `ADMIN_PASSWORD`, value = the password to share with organizers.
+6. Click **Deploy → New deployment → Web app**:
    - *Execute as:* **Me**
    - *Who has access:* **Anyone**
-6. Authorize when prompted, then copy the web app URL — that's the public registration link to share with participants.
+7. Authorize when prompted, then copy the web app URL — that's the public registration link to share with participants. The organizer dashboard is the same URL with `?page=admin` appended.
 
 ## Making changes
 
