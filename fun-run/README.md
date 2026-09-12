@@ -34,6 +34,14 @@ A registration website for the Peninsula Bridge Fun Run on **Sunday, October 4, 
 - **Shirt sizes / categories**: `SHIRT_SIZES` and `CATEGORIES` in `Index.html` (category columns also flow through `HEADERS` and `submitRegistration` in `Code.gs`).
 - After editing code, redeploy via **Deploy → Manage deployments → Edit → New version** (the URL stays the same).
 
+## Team testing before launch
+
+Two isolation options — the staging copy is the recommended one:
+
+1. **Staging deployment (recommended).** A test copy of the sheet exists in Drive: **TEST - Peninsula Bridge Fun Run 2026 - Registrations**. Follow the same deploy steps inside *that* copy (Extensions → Apps Script → paste both files → deploy as web app) and share the resulting URL with the team. Counters live in each Apps Script project's own Script Properties plus its own sheet, so the test deployment's bib numbers and shirt count are completely independent — the real site still launches at bib 1 with all 100 shirts. To rehearse the shirt cutoff, temporarily set `SHIRT_LIMIT` to something small (e.g. 3) in both files of the test copy only.
+
+2. **`resetForLaunch()`.** If test registrations ever land in the real sheet, open its Apps Script editor, pick `resetForLaunch` in the function dropdown, and click Run. It deletes all registration rows and resets the bib and shirt counters to their starting state — so run it only before launch, never after real registrations exist.
+
 ## Sharing results
 
 Share the Google Sheet with coworkers as usual (the web app keeps working regardless of who the sheet is shared with). Only the sheet owner's deployment writes to it — visitors never need Google accounts.
