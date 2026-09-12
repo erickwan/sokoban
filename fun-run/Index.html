@@ -352,6 +352,7 @@
       <div class="bib-meta">
         <span>Sunday, October 4, 2026</span>
         <span>Menlo School · 50 Valparaiso Ave, Atherton</span>
+        <span>Check-in 8:30 AM · Run starts 9:00 AM</span>
       </div>
     </div>
     <p class="lede">
@@ -572,7 +573,8 @@
     var n = result.bibs.length;
     document.getElementById('doneSummary').textContent =
       n + (n === 1 ? ' runner is' : ' runners are') + ' registered for race day. Here ' +
-      (n === 1 ? 'is the bib number' : 'are the bib numbers') + ' — we’ll have the printed bibs waiting at check-in.';
+      (n === 1 ? 'is the bib number' : 'are the bib numbers') + ' — we’ll have the printed bibs waiting at check-in, ' +
+      'which opens at 8:30 AM (the run starts at 9:00 AM).';
 
     var grid = document.getElementById('bibGrid');
     grid.innerHTML = '';
