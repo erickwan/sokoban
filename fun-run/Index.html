@@ -271,41 +271,6 @@
     margin: 40px 0 6px;
     letter-spacing: 0.02em;
   }
-  .bib-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 14px;
-    margin-top: 20px;
-  }
-  .mini-bib {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    overflow: hidden;
-    text-align: center;
-    box-shadow: 0 6px 18px rgba(23, 42, 77, 0.08);
-  }
-  .mini-bib .band {
-    background: var(--ink);
-    color: #fff;
-    font-family: var(--display);
-    font-size: 12px;
-    letter-spacing: 0.12em;
-    padding: 7px 8px 5px;
-  }
-  .mini-bib .num {
-    font-family: var(--display);
-    font-size: 64px;
-    line-height: 1.05;
-    padding-top: 8px;
-    font-variant-numeric: tabular-nums;
-  }
-  .mini-bib .who {
-    font-weight: 600;
-    font-size: 14px;
-    padding: 2px 10px 14px;
-    color: var(--ink-soft);
-  }
   .donate {
     margin-top: 26px;
     background: var(--card);
@@ -334,13 +299,6 @@
     text-align: center;
     font-size: 13px;
     color: var(--ink-soft);
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    #done.on .mini-bib { animation: pop 0.35s ease-out backwards; }
-    #done.on .mini-bib:nth-child(2) { animation-delay: 0.08s; }
-    #done.on .mini-bib:nth-child(3) { animation-delay: 0.16s; }
-    #done.on .mini-bib:nth-child(4) { animation-delay: 0.24s; }
-    @keyframes pop { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
   }
 </style>
 <!-- ARTIFACT-KEEP-END -->
@@ -416,7 +374,6 @@
       <p class="cheer">You’re in! 🎉</p>
       <p class="hint" id="doneSummary"></p>
       <p class="hint" id="shirtNote" hidden></p>
-      <div class="bib-grid" id="bibGrid"></div>
 
       <div class="donate">
         <h3>Suggested donation: <span class="amount" id="donationAmount"></span></h3>
@@ -627,21 +584,8 @@
 
     var n = result.bibs.length;
     document.getElementById('doneSummary').textContent =
-      n + (n === 1 ? ' runner is' : ' runners are') + ' registered for race day. Here ' +
-      (n === 1 ? 'is the bib number' : 'are the bib numbers') + ' — we’ll have the printed bibs waiting at check-in, ' +
-      'which opens at 8:30 AM (the run starts at 9:00 AM).';
-
-    var grid = document.getElementById('bibGrid');
-    grid.innerHTML = '';
-    result.bibs.forEach(function (b) {
-      var card = document.createElement('div');
-      card.className = 'mini-bib';
-      var band = document.createElement('div'); band.className = 'band'; band.textContent = 'PB FUN RUN · 10.04.26';
-      var num = document.createElement('div'); num.className = 'num'; num.textContent = b.bib;
-      var who = document.createElement('div'); who.className = 'who'; who.textContent = b.firstName + ' ' + b.lastName;
-      card.appendChild(band); card.appendChild(num); card.appendChild(who);
-      grid.appendChild(card);
-    });
+      n + (n === 1 ? ' runner is' : ' runners are') + ' registered for race day — we’ll have the printed bibs ' +
+      'waiting at check-in, which opens at 8:30 AM (the run starts at 9:00 AM).';
 
     var total = result.suggestedDonation != null ? result.suggestedDonation : n * DONATION_PER_RUNNER;
     document.getElementById('donationAmount').textContent = '$' + total;
