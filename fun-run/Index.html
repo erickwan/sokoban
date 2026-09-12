@@ -187,6 +187,26 @@
     outline-offset: 1px;
   }
 
+  .shirt-gone {
+    align-self: end;
+    font-size: 13px;
+    color: var(--ink-soft);
+    background: var(--paper);
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    line-height: 1.4;
+  }
+  .preview-note button {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.5);
+    border-radius: 999px;
+    color: #fff;
+    font: 600 12px var(--body);
+    padding: 3px 10px;
+    margin-left: 8px;
+    cursor: pointer;
+  }
   .add-runner {
     width: 100%;
     padding: 13px;
@@ -320,6 +340,7 @@
 <div class="preview-note" id="previewNote">
   Design preview — submissions are not saved here and bib numbers are simulated.
   The deployed site assigns real bibs and records registrations in the Google Sheet.
+  <button type="button" id="simulateFull">Simulate 97 already registered</button>
 </div>
 
 <div class="wrap">
@@ -380,6 +401,7 @@
     <section id="done" aria-label="Registration confirmation">
       <p class="cheer">You’re in! 🎉</p>
       <p class="hint" id="doneSummary"></p>
+      <p class="hint" id="shirtNote" hidden></p>
       <div class="bib-grid" id="bibGrid"></div>
 
       <div class="donate">
@@ -400,6 +422,7 @@
 <script>
   var DONATION_PER_RUNNER = 25;
   var MAX_RUNNERS = 20;
+  var SHIRT_LIMIT = 100;  // free tees for the first 100 registered participants
   var SHIRT_SIZES = ['Youth S', 'Youth M', 'Youth L', 'Adult S', 'Adult M', 'Adult L', 'Adult XL'];
   var CATEGORIES = [
     'Student Grade 6', 'Student Grade 7', 'Student Grade 8', 'Student Grade 9',
@@ -413,6 +436,13 @@
   // preview) the page runs in simulation mode.
   var LIVE = !!(window.google && window.google.script && window.google.script.run);
   var previewBibCounter = 0;
+
+  // How many participants are already registered — the count that decides
+  // who still gets a free tee. Deliberately independent of bib numbers:
+  // the server tracks it separately, so bib allocation can change without
+  // affecting the shirt cutoff. Refreshed from the server on load and
+  // after each submission.
+  var claimedCount = 0;
 
   var runnersEl = document.getElementById('runners');
   var runnerSeq = 0;
@@ -443,8 +473,10 @@
           '<input id="other-' + i + '" data-field="categoryOther" autocomplete="off"></div>' +
         '<div><label for="age-' + i + '">Age on race day</label>' +
           '<input id="age-' + i + '" data-field="age" type="number" min="1" max="120" inputmode="numeric"></div>' +
-        '<div><label for="shirt-' + i + '">T-shirt size</label>' +
+        '<div class="shirt-cell"><label for="shirt-' + i + '">T-shirt size</label>' +
           '<select id="shirt-' + i + '" data-field="shirtSize">' + options(SHIRT_SIZES) + '</select></div>' +
+        '<div class="shirt-gone" hidden>👕 All ' + SHIRT_LIMIT + ' free race tees have been claimed — ' +
+          'this runner still gets a bib and the full race-day experience.</div>' +
       '</div>';
     var catSelect = card.querySelector('[data-field="category"]');
     var otherWrap = card.querySelector('.other-wrap');
@@ -465,6 +497,12 @@
     for (var i = 0; i < cards.length; i++) {
       cards[i].querySelector('.runner-tag').textContent = 'Runner ' + (i + 1);
       cards[i].querySelector('.remove').style.visibility = cards.length > 1 ? 'visible' : 'hidden';
+      // This runner would be participant (claimedCount + i + 1) overall.
+      var hasShirt = claimedCount + i + 1 <= SHIRT_LIMIT;
+      var shirtCell = cards[i].querySelector('.shirt-cell');
+      shirtCell.hidden = !hasShirt;
+      cards[i].querySelector('.shirt-gone').hidden = hasShirt;
+      if (!hasShirt) shirtCell.querySelector('select').value = '';
     }
     document.getElementById('addRunner').style.display = cards.length >= MAX_RUNNERS ? 'none' : '';
     var n = cards.length;
@@ -513,6 +551,20 @@
   }
 
   function showConfirmation(result) {
+    if (result.participantCount != null) {
+      claimedCount = result.participantCount;
+    } else {
+      claimedCount += result.bibs.length;
+    }
+    var shirtNote = document.getElementById('shirtNote');
+    if (result.shirtsDenied && result.shirtsDenied.length) {
+      shirtNote.hidden = false;
+      shirtNote.textContent = 'One heads-up: the last of the ' + SHIRT_LIMIT + ' free T-shirts were claimed ' +
+        'moments before this registration went through, so ' + result.shirtsDenied.join(', ') +
+        (result.shirtsDenied.length === 1 ? ' won’t' : ' won’t') + ' receive a tee.';
+    } else {
+      shirtNote.hidden = true;
+    }
     document.getElementById('reg').classList.add('off');
     var done = document.getElementById('done');
     done.classList.add('on');
@@ -569,7 +621,11 @@
           return { bib: previewBibCounter, firstName: p.firstName, lastName: p.lastName };
         });
         restore();
-        showConfirmation({ bibs: bibs, suggestedDonation: bibs.length * DONATION_PER_RUNNER });
+        showConfirmation({
+          bibs: bibs,
+          suggestedDonation: bibs.length * DONATION_PER_RUNNER,
+          participantCount: claimedCount + bibs.length
+        });
       }, 500);
     }
   });
@@ -585,7 +641,23 @@
     window.scrollTo({ top: 0 });
   });
 
-  if (!LIVE) document.getElementById('previewNote').classList.add('on');
+  if (LIVE) {
+    google.script.run
+      .withSuccessHandler(function (status) {
+        claimedCount = status.participantCount || 0;
+        refresh();
+      })
+      .getEventStatus();
+  } else {
+    document.getElementById('previewNote').classList.add('on');
+    document.getElementById('simulateFull').addEventListener('click', function () {
+      claimedCount = SHIRT_LIMIT - 3;
+      previewBibCounter = claimedCount;
+      this.disabled = true;
+      this.textContent = 'Simulating ' + claimedCount + ' already registered';
+      refresh();
+    });
+  }
   addRunner(false);
 </script>
 <!-- ARTIFACT-BODY-END -->
