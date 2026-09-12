@@ -351,6 +351,7 @@
   Design preview — submissions are not saved here and bib numbers are simulated.
   The deployed site assigns real bibs and records registrations in the Google Sheet.
   <button type="button" id="simulateFull">Simulate 97 already registered</button>
+  <button type="button" id="togglePb">Preview PB family mode</button>
 </div>
 
 <div class="wrap">
@@ -368,7 +369,7 @@
       </div>
     </div>
     <p class="eyebrow">Benefiting Peninsula Bridge students</p>
-    <p class="lede">
+    <p class="lede" id="lede">
       Lace up for a morning on the Menlo School campus. Register everyone in your group below —
       each runner gets a <strong>bib number</strong> right away, and a
       <strong>$25 suggested donation per runner</strong> goes straight to Peninsula Bridge.
@@ -451,6 +452,15 @@
   var LIVE = !!(window.google && window.google.script && window.google.script.run);
   var previewBibCounter = 0;
 
+  // Peninsula Bridge family mode, enabled with ?pb=1 on the URL: surname
+  // fields replace "Last name", category is fixed to "Peninsula Bridge"
+  // and hidden, and there is no T-shirt picker and no donation ask.
+  var PB_MODE = false;
+  var DEFAULT_LEDE = null;
+  var PB_LEDE =
+    'Welcome, Peninsula Bridge families! Register everyone in your group below — ' +
+    'each runner gets a <strong>bib number</strong> right away.';
+
   // How many participants are already registered — the count that decides
   // who still gets a free tee. Deliberately independent of bib numbers:
   // the server tracks it separately, so bib allocation can change without
@@ -471,12 +481,17 @@
     var i = runnerSeq++;
     var card = document.createElement('div');
     card.className = 'runner';
-    card.innerHTML =
-      '<div class="runner-head">' +
-        '<span class="runner-tag">Runner</span>' +
-        '<button type="button" class="remove" aria-label="Remove this runner">Remove</button>' +
-      '</div>' +
-      '<div class="grid">' +
+    var fields;
+    if (PB_MODE) {
+      fields =
+        '<div><label for="first-' + i + '">First name</label>' +
+          '<input id="first-' + i + '" data-field="firstName" autocomplete="off" required></div>' +
+        '<div><label for="father-' + i + '">Father’s surname</label>' +
+          '<input id="father-' + i + '" data-field="fatherSurname" autocomplete="off" required></div>' +
+        '<div class="span2"><label for="maiden-' + i + '">Mother’s maiden name</label>' +
+          '<input id="maiden-' + i + '" data-field="motherMaidenName" autocomplete="off" required></div>';
+    } else {
+      fields =
         '<div><label for="first-' + i + '">First name</label>' +
           '<input id="first-' + i + '" data-field="firstName" autocomplete="off" required></div>' +
         '<div><label for="last-' + i + '">Last name</label>' +
@@ -488,14 +503,22 @@
         '<div class="shirt-cell"><label for="shirt-' + i + '">T-shirt size</label>' +
           '<select id="shirt-' + i + '" data-field="shirtSize">' + options(SHIRT_SIZES) + '</select></div>' +
         '<div class="shirt-gone" hidden>👕 All ' + SHIRT_LIMIT + ' free race tees have been claimed — ' +
-          'this runner still gets a bib and the full race-day experience.</div>' +
-      '</div>';
+          'this runner still gets a bib and the full race-day experience.</div>';
+    }
+    card.innerHTML =
+      '<div class="runner-head">' +
+        '<span class="runner-tag">Runner</span>' +
+        '<button type="button" class="remove" aria-label="Remove this runner">Remove</button>' +
+      '</div>' +
+      '<div class="grid">' + fields + '</div>';
     var catSelect = card.querySelector('[data-field="category"]');
-    var otherWrap = card.querySelector('.other-wrap');
-    catSelect.addEventListener('change', function () {
-      otherWrap.hidden = catSelect.value !== 'Other';
-      if (otherWrap.hidden) otherWrap.querySelector('input').value = '';
-    });
+    if (catSelect) {
+      var otherWrap = card.querySelector('.other-wrap');
+      catSelect.addEventListener('change', function () {
+        otherWrap.hidden = catSelect.value !== 'Other';
+        if (otherWrap.hidden) otherWrap.querySelector('input').value = '';
+      });
+    }
     card.querySelector('.remove').addEventListener('click', function () {
       if (runnersEl.children.length > 1) { card.remove(); refresh(); }
     });
@@ -504,22 +527,35 @@
     if (focusFirst) card.querySelector('input').focus();
   }
 
+  function setPbMode(on) {
+    PB_MODE = on;
+    var lede = document.getElementById('lede');
+    if (DEFAULT_LEDE === null) DEFAULT_LEDE = lede.innerHTML;
+    lede.innerHTML = on ? PB_LEDE : DEFAULT_LEDE;
+    runnersEl.innerHTML = '';
+    runnerSeq = 0;
+    addRunner(false);
+  }
+
   function refresh() {
     var cards = runnersEl.children;
     for (var i = 0; i < cards.length; i++) {
       cards[i].querySelector('.runner-tag').textContent = 'Runner ' + (i + 1);
       cards[i].querySelector('.remove').style.visibility = cards.length > 1 ? 'visible' : 'hidden';
-      // This runner would be participant (claimedCount + i + 1) overall.
-      var hasShirt = claimedCount + i + 1 <= SHIRT_LIMIT;
       var shirtCell = cards[i].querySelector('.shirt-cell');
-      shirtCell.hidden = !hasShirt;
-      cards[i].querySelector('.shirt-gone').hidden = hasShirt;
-      if (!hasShirt) shirtCell.querySelector('select').value = '';
+      if (shirtCell) {
+        // This runner would be shirt-eligible participant (claimedCount + i + 1).
+        var hasShirt = claimedCount + i + 1 <= SHIRT_LIMIT;
+        shirtCell.hidden = !hasShirt;
+        cards[i].querySelector('.shirt-gone').hidden = hasShirt;
+        if (!hasShirt) shirtCell.querySelector('select').value = '';
+      }
     }
     document.getElementById('addRunner').style.display = cards.length >= MAX_RUNNERS ? 'none' : '';
     var n = cards.length;
-    document.getElementById('tally').textContent =
-      n + (n === 1 ? ' runner' : ' runners') + ' · suggested donation $' + (n * DONATION_PER_RUNNER);
+    document.getElementById('tally').textContent = PB_MODE
+      ? n + (n === 1 ? ' runner' : ' runners')
+      : n + (n === 1 ? ' runner' : ' runners') + ' · suggested donation $' + (n * DONATION_PER_RUNNER);
   }
 
   function collect() {
@@ -531,14 +567,20 @@
       for (var j = 0; j < fields.length; j++) {
         p[fields[j].getAttribute('data-field')] = fields[j].value.trim();
       }
-      if (!p.firstName || !p.lastName) {
-        throw new Error('Please enter a first and last name for runner ' + (i + 1) + '.');
-      }
-      if (!p.category) {
-        throw new Error('Please select a category for runner ' + (i + 1) + '.');
-      }
-      if (p.category === 'Other' && !p.categoryOther) {
-        throw new Error('Please fill in the category for runner ' + (i + 1) + ' (Other).');
+      if (PB_MODE) {
+        if (!p.firstName || !p.fatherSurname || !p.motherMaidenName) {
+          throw new Error('Please enter the first name, father’s surname, and mother’s maiden name for runner ' + (i + 1) + '.');
+        }
+      } else {
+        if (!p.firstName || !p.lastName) {
+          throw new Error('Please enter a first and last name for runner ' + (i + 1) + '.');
+        }
+        if (!p.category) {
+          throw new Error('Please select a category for runner ' + (i + 1) + '.');
+        }
+        if (p.category === 'Other' && !p.categoryOther) {
+          throw new Error('Please fill in the category for runner ' + (i + 1) + ' (Other).');
+        }
       }
       participants.push(p);
     }
@@ -547,6 +589,7 @@
     if (!name) throw new Error('Please enter a contact name.');
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Please enter a valid contact email.');
     return {
+      pb: PB_MODE,
       participants: participants,
       contact: {
         name: name,
@@ -563,11 +606,14 @@
   }
 
   function showConfirmation(result) {
-    if (result.participantCount != null) {
+    if (result.shirtEligibleCount != null) {
+      claimedCount = result.shirtEligibleCount;
+    } else if (result.participantCount != null) {
       claimedCount = result.participantCount;
-    } else {
+    } else if (!PB_MODE) {
       claimedCount += result.bibs.length;
     }
+    document.querySelector('.donate').hidden = PB_MODE;
     var shirtNote = document.getElementById('shirtNote');
     if (result.shirtsDenied && result.shirtsDenied.length) {
       shirtNote.hidden = false;
@@ -631,13 +677,13 @@
       setTimeout(function () {
         var bibs = payload.participants.map(function (p) {
           previewBibCounter += 1;
-          return { bib: previewBibCounter, firstName: p.firstName, lastName: p.lastName };
+          return { bib: previewBibCounter, firstName: p.firstName, lastName: p.lastName || p.fatherSurname };
         });
         restore();
         showConfirmation({
           bibs: bibs,
           suggestedDonation: bibs.length * DONATION_PER_RUNNER,
-          participantCount: claimedCount + bibs.length
+          shirtEligibleCount: claimedCount + (PB_MODE ? 0 : bibs.length)
         });
       }, 500);
     }
@@ -657,10 +703,18 @@
   if (LIVE) {
     google.script.run
       .withSuccessHandler(function (status) {
-        claimedCount = status.participantCount || 0;
+        claimedCount = (status.shirtEligibleCount != null
+          ? status.shirtEligibleCount : status.participantCount) || 0;
         refresh();
       })
       .getEventStatus();
+    // The web app runs in an iframe, so URL parameters arrive via
+    // google.script.url rather than location.search.
+    if (google.script.url && google.script.url.getLocation) {
+      google.script.url.getLocation(function (location) {
+        if (location.parameter && location.parameter.pb === '1') setPbMode(true);
+      });
+    }
   } else {
     document.getElementById('previewNote').classList.add('on');
     document.getElementById('simulateFull').addEventListener('click', function () {
@@ -670,8 +724,15 @@
       this.textContent = 'Simulating ' + claimedCount + ' already registered';
       refresh();
     });
+    document.getElementById('togglePb').addEventListener('click', function () {
+      setPbMode(!PB_MODE);
+      this.textContent = PB_MODE ? 'Back to public form' : 'Preview PB family mode';
+    });
+    try {
+      if (new URLSearchParams(window.location.search).get('pb') === '1') setPbMode(true);
+    } catch (e) {}
   }
-  addRunner(false);
+  if (!runnersEl.children.length) addRunner(false);
 </script>
 <!-- ARTIFACT-BODY-END -->
 </body>

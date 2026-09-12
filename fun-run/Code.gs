@@ -33,8 +33,10 @@ function doGet(e) {
  */
 function getEventStatus() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  var props = PropertiesService.getScriptProperties();
   return {
-    participantCount: participantCount_(PropertiesService.getScriptProperties(), sheet),
+    participantCount: participantCount_(props, sheet),
+    shirtEligibleCount: shirtEligibleCount_(props, sheet),
     shirtLimit: SHIRT_LIMIT
   };
 }
@@ -60,8 +62,23 @@ function submitRegistration(payload) {
   if (!contactName) throw new Error('A contact name is required.');
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contactEmail)) throw new Error('A valid contact email is required.');
 
+  var pb = payload.pb === true;
   var participants = payload.participants.map(function (p, i) {
     var firstName = clean_(p.firstName);
+    if (pb) {
+      var father = clean_(p.fatherSurname);
+      var maiden = clean_(p.motherMaidenName);
+      if (!firstName || !father || !maiden) {
+        throw new Error('Runner ' + (i + 1) + " needs a first name, father's surname, and mother's maiden name.");
+      }
+      return {
+        firstName: firstName,
+        lastName: father,
+        motherMaidenName: maiden,
+        category: PB_CATEGORY,
+        shirtSize: ''
+      };
+    }
     var lastName = clean_(p.lastName);
     if (!firstName || !lastName) throw new Error('Runner ' + (i + 1) + ' needs a first and last name.');
     var category = clean_(p.category);
@@ -74,6 +91,7 @@ function submitRegistration(payload) {
     return {
       firstName: firstName,
       lastName: lastName,
+      motherMaidenName: '',
       category: category,
       shirtSize: clean_(p.shirtSize)
     };
@@ -94,10 +112,12 @@ function submitRegistration(payload) {
       FIRST_BIB - 1
     );
 
-    // Shirt eligibility runs on its own counter, still under the same
+    // Shirt eligibility runs on its own counter (only participants who
+    // could claim a tee — the pb flow never does), still under the same
     // lock, so the 100-shirt cutoff is exact even under concurrent
     // submissions — and stays correct if bib allocation changes.
     var participantCount = participantCount_(props, sheet);
+    var shirtEligible = shirtEligibleCount_(props, sheet);
 
     var now = new Date();
     var rows = [];
@@ -107,23 +127,28 @@ function submitRegistration(payload) {
       lastBib += 1;
       participantCount += 1;
       var shirtSize = p.shirtSize;
-      if (participantCount > SHIRT_LIMIT) {
-        if (shirtSize) shirtsDenied.push(p.firstName + ' ' + p.lastName);
-        shirtSize = '';
+      if (!pb) {
+        shirtEligible += 1;
+        if (shirtEligible > SHIRT_LIMIT) {
+          if (shirtSize) shirtsDenied.push(p.firstName + ' ' + p.lastName);
+          shirtSize = '';
+        }
       }
       bibs.push({ bib: lastBib, firstName: p.firstName, lastName: p.lastName });
-      rows.push([lastBib, p.firstName, p.lastName, p.category, shirtSize,
+      rows.push([lastBib, p.firstName, p.lastName, p.motherMaidenName, p.category, shirtSize,
                  contactName, contactEmail, contactPhone, now]);
     });
 
     sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
     props.setProperty('lastBib', String(lastBib));
     props.setProperty('participantCount', String(participantCount));
+    props.setProperty('shirtEligibleCount', String(shirtEligible));
 
     return {
       bibs: bibs,
       suggestedDonation: participants.length * DONATION_PER_RUNNER,
       participantCount: participantCount,
+      shirtEligibleCount: shirtEligible,
       shirtsDenied: shirtsDenied
     };
   } finally {
@@ -131,8 +156,14 @@ function submitRegistration(payload) {
   }
 }
 
-var HEADERS = ['Bib #', 'First Name', 'Last Name', 'Category', 'T-Shirt Size',
-               'Contact Name', 'Contact Email', 'Contact Phone', 'Registered At'];
+var HEADERS = ['Bib #', 'First Name', 'Last Name', "Mother's Maiden Name", 'Category',
+               'T-Shirt Size', 'Contact Name', 'Contact Email', 'Contact Phone', 'Registered At'];
+
+// Category recorded for registrations made through the ?pb=1 form
+// variant (Peninsula Bridge families: surname fields, no shirt picker,
+// no donation ask). These participants never claim a free tee, so they
+// do not consume the SHIRT_LIMIT slots either.
+var PB_CATEGORY = 'Peninsula Bridge';
 
 /**
  * Summary stats for the organizer dashboard (Admin.html, served at
@@ -204,6 +235,7 @@ function resetForLaunch() {
     var props = PropertiesService.getScriptProperties();
     props.deleteProperty('lastBib');
     props.deleteProperty('participantCount');
+    props.deleteProperty('shirtEligibleCount');
   } finally {
     lock.releaseLock();
   }
@@ -230,6 +262,22 @@ function participantCount_(props, sheet) {
     Number(props.getProperty('participantCount')) || 0,
     Math.max(0, sheet.getLastRow() - 1)
   );
+}
+
+// Participants who could claim a free tee (everyone except pb-flow
+// registrations): the tracked counter, cross-checked against the
+// sheet's non-PB_CATEGORY rows.
+function shirtEligibleCount_(props, sheet) {
+  var fromProps = Number(props.getProperty('shirtEligibleCount')) || 0;
+  var fromSheet = 0;
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    var categories = sheet.getRange(2, HEADERS.indexOf('Category') + 1, lastRow - 1, 1).getValues();
+    categories.forEach(function (row) {
+      if (String(row[0]).trim() !== PB_CATEGORY) fromSheet += 1;
+    });
+  }
+  return Math.max(fromProps, fromSheet);
 }
 
 function maxBibInSheet_(sheet) {
