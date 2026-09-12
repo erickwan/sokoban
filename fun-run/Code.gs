@@ -62,7 +62,12 @@ function submitRegistration(payload) {
   if (!contactName) throw new Error('A contact name is required.');
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contactEmail)) throw new Error('A valid contact email is required.');
 
-  var pb = payload.pb === true;
+  // pb is set by the ?pb=1 form, but is also inferred from the fields
+  // themselves so a page/backend version mismatch degrades gracefully
+  // instead of failing validation with a misleading error.
+  var pb = payload.pb === true || payload.participants.some(function (p) {
+    return !!(p && (p.fatherSurname || p.motherMaidenName));
+  });
   var participants = payload.participants.map(function (p, i) {
     var firstName = clean_(p.firstName);
     if (pb) {
