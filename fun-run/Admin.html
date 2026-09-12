@@ -302,7 +302,7 @@
     'Alum', 'Faculty/Staff', 'Parent/Guardian',
     'Sibling Under 10', 'Sibling Over 10', 'Other'
   ];
-  var SHIRT_SIZE_ORDER = ['Youth S', 'Youth M', 'Youth L', 'Adult S', 'Adult M', 'Adult L', 'Adult XL'];
+  var SHIRT_SIZE_ORDER = ['Child M', 'Child XL/Adult XS', 'Adult S', 'Adult M', 'Adult L', 'Adult XL', 'Adult XXL'];
 
   var LIVE = !!(window.google && window.google.script && window.google.script.run);
   var savedPassword = '';
@@ -318,8 +318,8 @@
       'Parent/Guardian': 14, 'Sibling Under 10': 4, 'Sibling Over 10': 2, 'Other': 2
     },
     byShirtSize: {
-      'Youth S': 6, 'Youth M': 11, 'Youth L': 9,
-      'Adult S': 13, 'Adult M': 19, 'Adult L': 12, 'Adult XL': 6
+      'Child M': 11, 'Child XL/Adult XS': 9,
+      'Adult S': 13, 'Adult M': 19, 'Adult L': 12, 'Adult XL': 6, 'Adult XXL': 6
     },
     shirtsClaimed: 76,
     shirtLimit: 100
