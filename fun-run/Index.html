@@ -401,6 +401,12 @@
   var DONATION_PER_RUNNER = 25;
   var MAX_RUNNERS = 20;
   var SHIRT_SIZES = ['Youth S', 'Youth M', 'Youth L', 'Adult S', 'Adult M', 'Adult L', 'Adult XL'];
+  var CATEGORIES = [
+    'Student Grade 6', 'Student Grade 7', 'Student Grade 8', 'Student Grade 9',
+    'Student Grade 10', 'Student Grade 11', 'Student Grade 12',
+    'Alum', 'Faculty/Staff', 'Parent/Guardian',
+    'Sibling Under 10', 'Sibling Over 10', 'Other'
+  ];
 
   // When served by Google Apps Script, google.script.run is available and
   // submissions are recorded for real. Anywhere else (e.g. the design
@@ -411,8 +417,8 @@
   var runnersEl = document.getElementById('runners');
   var runnerSeq = 0;
 
-  function shirtOptions() {
-    return '<option value="">Select…</option>' + SHIRT_SIZES.map(function (s) {
+  function options(list) {
+    return '<option value="">Select…</option>' + list.map(function (s) {
       return '<option>' + s + '</option>';
     }).join('');
   }
@@ -431,11 +437,21 @@
           '<input id="first-' + i + '" data-field="firstName" autocomplete="off" required></div>' +
         '<div><label for="last-' + i + '">Last name</label>' +
           '<input id="last-' + i + '" data-field="lastName" autocomplete="off" required></div>' +
+        '<div class="span2"><label for="cat-' + i + '">Category</label>' +
+          '<select id="cat-' + i + '" data-field="category" required>' + options(CATEGORIES) + '</select></div>' +
+        '<div class="span2 other-wrap" hidden><label for="other-' + i + '">Please specify</label>' +
+          '<input id="other-' + i + '" data-field="categoryOther" autocomplete="off"></div>' +
         '<div><label for="age-' + i + '">Age on race day</label>' +
           '<input id="age-' + i + '" data-field="age" type="number" min="1" max="120" inputmode="numeric"></div>' +
         '<div><label for="shirt-' + i + '">T-shirt size</label>' +
-          '<select id="shirt-' + i + '" data-field="shirtSize">' + shirtOptions() + '</select></div>' +
+          '<select id="shirt-' + i + '" data-field="shirtSize">' + options(SHIRT_SIZES) + '</select></div>' +
       '</div>';
+    var catSelect = card.querySelector('[data-field="category"]');
+    var otherWrap = card.querySelector('.other-wrap');
+    catSelect.addEventListener('change', function () {
+      otherWrap.hidden = catSelect.value !== 'Other';
+      if (otherWrap.hidden) otherWrap.querySelector('input').value = '';
+    });
     card.querySelector('.remove').addEventListener('click', function () {
       if (runnersEl.children.length > 1) { card.remove(); refresh(); }
     });
@@ -467,6 +483,12 @@
       }
       if (!p.firstName || !p.lastName) {
         throw new Error('Please enter a first and last name for runner ' + (i + 1) + '.');
+      }
+      if (!p.category) {
+        throw new Error('Please select a category for runner ' + (i + 1) + '.');
+      }
+      if (p.category === 'Other' && !p.categoryOther) {
+        throw new Error('Please fill in the category for runner ' + (i + 1) + ' (Other).');
       }
       participants.push(p);
     }
