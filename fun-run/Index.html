@@ -48,6 +48,10 @@
   /* ---------- Hero: the event photo with the race bib pinned over it ---------- */
   header { padding-block: 20px 8px; }
   .hero-photo {
+    /* Shown at 75% width so the photo renders above its native pixel
+       density and looks sharper. */
+    max-width: 75%;
+    margin-inline: auto;
     border-radius: 14px;
     overflow: hidden;
     box-shadow: 0 10px 30px rgba(23, 42, 77, 0.12);
