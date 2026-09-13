@@ -11,7 +11,7 @@ A registration website for the Peninsula Bridge Fun Run on **Sunday, October 4, 
 - Appends one row per participant to the Google Sheet: `Bib #, First Name, Last Name, Category, T-Shirt Size, Contact Name, Contact Email, Contact Phone, Registered At`. The header row is kept in sync automatically (`ensureHeader_`), so column changes in `Code.gs` show up in the sheet on the next submission.
 
 - **Peninsula Bridge family variant** at `<web app URL>?pb=1`: the runner card asks for first name, **father's surname**, and **mother's maiden name** (no last-name field), the category is hidden and recorded as `Peninsula Bridge`, there is no T-shirt picker, and no suggested donation is shown anywhere. Father's surname is stored in the Last Name column; the maiden name goes in its own column. PB registrations get bibs and count as participants, but do **not** consume the 100 free-tee slots (they can never claim one).
-- **Password-protected organizer dashboard** at `<web app URL>?page=admin`: number of families (unique contact emails), total participants, runners by category, and claimed T-shirts by size, with a refresh button. The password is checked server-side (stats are never sent to the browser without it) and lives in Script Properties, not in the code.
+- **Password-protected organizer dashboard** at `<web app URL>?page=admin`: number of families (unique contact emails), total participants, a cumulative sign-ups-over-time chart, runners by category, and claimed T-shirts by size, with a refresh button. The password is checked server-side (stats are never sent to the browser without it) and lives in Script Properties, not in the code.
 
 ## Files
 

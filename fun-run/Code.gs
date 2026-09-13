@@ -194,11 +194,17 @@ function getAdminStats(password) {
   var iShirt = HEADERS.indexOf('T-Shirt Size');
   var iEmail = HEADERS.indexOf('Contact Email');
 
+  var iRegistered = HEADERS.indexOf('Registered At');
+
   var families = {};
   var byCategory = {};
   var byShirtSize = {};
   var shirtsClaimed = 0;
+  var registrationTimes = [];  // epoch ms per participant (Dates are not
+                               // legal google.script.run return values)
   rows.forEach(function (row) {
+    var t = row[iRegistered] instanceof Date ? row[iRegistered] : new Date(row[iRegistered]);
+    if (!isNaN(t.getTime())) registrationTimes.push(t.getTime());
     var email = String(row[iEmail]).trim().toLowerCase();
     if (email) families[email] = true;
     var category = String(row[iCategory]).trim();
@@ -218,7 +224,8 @@ function getAdminStats(password) {
     byCategory: byCategory,
     byShirtSize: byShirtSize,
     shirtsClaimed: shirtsClaimed,
-    shirtLimit: SHIRT_LIMIT
+    shirtLimit: SHIRT_LIMIT,
+    registrationTimes: registrationTimes
   };
 }
 

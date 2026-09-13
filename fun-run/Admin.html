@@ -171,6 +171,23 @@
   }
   .meter .fill { height: 100%; background: var(--accent); border-radius: 3px; }
 
+  .panel.timeline { margin-top: 14px; }
+  .chart-box { position: relative; }
+  .chart-box svg { display: block; width: 100%; }
+  .chart-tip {
+    position: absolute;
+    display: none;
+    background: var(--ink);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.35;
+    padding: 6px 9px;
+    border-radius: 7px;
+    pointer-events: none;
+    white-space: nowrap;
+    transform: translate(-50%, -100%);
+  }
+
   .panels {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -277,6 +294,12 @@
         </div>
       </div>
 
+      <div class="panel timeline">
+        <h2>Sign-ups over time</h2>
+        <p class="sub">Cumulative registered participants by day.</p>
+        <div class="chart-box" id="timeChart"></div>
+      </div>
+
       <div class="panels">
         <div class="panel">
           <h2>Runners by category</h2>
@@ -325,6 +348,18 @@
     shirtsClaimed: 76,
     shirtLimit: 100
   };
+  // Sample sign-up curve: 92 registrations accelerating over three weeks.
+  (function () {
+    var total = 92, days = 21, now = Date.now(), times = [], acc = 0;
+    for (var i = 0; i < days; i++) {
+      var target = Math.round(total * Math.pow((i + 1) / days, 1.6));
+      for (var j = 0; j < target - acc; j++) {
+        times.push(now - (days - 1 - i) * 864e5 + j * 36e5);
+      }
+      acc = target;
+    }
+    DEMO_STATS.registrationTimes = times;
+  })();
 
   function barRows(container, order, counts) {
     var max = 1;
@@ -347,6 +382,89 @@
     });
   }
 
+  var lastTimes = null;
+
+  function fmtDay(t) {
+    return new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  function renderTimeChart(times) {
+    lastTimes = times || [];
+    var box = document.getElementById('timeChart');
+    box.innerHTML = '';
+    if (!lastTimes.length) {
+      box.innerHTML = '<p class="sub" style="margin:0">No registrations yet — the curve appears with the first sign-up.</p>';
+      return;
+    }
+
+    // Bucket by local day, then accumulate.
+    var byDay = {};
+    lastTimes.forEach(function (t) {
+      var d = new Date(t); d.setHours(0, 0, 0, 0);
+      byDay[+d] = (byDay[+d] || 0) + 1;
+    });
+    var dayKeys = Object.keys(byDay).map(Number).sort(function (a, b) { return a - b; });
+    var pts = [], cum = 0;
+    for (var d = new Date(dayKeys[0]); +d <= dayKeys[dayKeys.length - 1]; d.setDate(d.getDate() + 1)) {
+      cum += (byDay[+d] || 0);
+      pts.push({ day: +d, added: byDay[+d] || 0, cum: cum });
+    }
+
+    var W = Math.max(300, box.clientWidth), H = 210;
+    var m = { l: 34, r: 46, t: 14, b: 26 };
+    var maxY = pts[pts.length - 1].cum;
+    function x(i) { return pts.length === 1 ? m.l + (W - m.l - m.r) / 2 : m.l + (W - m.l - m.r) * i / (pts.length - 1); }
+    function y(v) { return m.t + (H - m.t - m.b) * (1 - v / maxY); }
+
+    // Y ticks on a 1/2/5 step, at most 4 gridlines plus the max.
+    var step = 1;
+    while (maxY / step > 4) step = ({ 1: 2, 2: 5 })[('' + step)[0]] * Math.pow(10, ('' + step).length - 1) || step * 2;
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" role="img" ' +
+      'aria-label="Cumulative sign-ups by day, ending at ' + maxY + '">';
+    for (var v = step; v <= maxY; v += step) {
+      svg += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#D8E0EC" stroke-width="1"/>' +
+             '<text x="' + (m.l - 7) + '" y="' + (y(v) + 3.5) + '" text-anchor="end" font-size="11" fill="#51617D">' + v + '</text>';
+    }
+    // X tick labels: at most 5, evenly spaced days.
+    var nTicks = Math.min(5, pts.length);
+    for (var k = 0; k < nTicks; k++) {
+      var i = Math.round(k * (pts.length - 1) / Math.max(1, nTicks - 1));
+      svg += '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="11" fill="#51617D">' + fmtDay(pts[i].day) + '</text>';
+    }
+    // Area + line + endpoint.
+    var line = pts.map(function (p, i) { return (i ? 'L' : 'M') + x(i) + ' ' + y(p.cum); }).join(' ');
+    svg += '<path d="' + line + ' L' + x(pts.length - 1) + ' ' + y(0) + ' L' + x(0) + ' ' + y(0) + ' Z" fill="rgba(23,42,77,0.08)"/>' +
+           '<path d="' + line + '" fill="none" stroke="#172A4D" stroke-width="2" stroke-linejoin="round"/>' +
+           '<circle id="tipDot" r="4" fill="#172A4D" stroke="#fff" stroke-width="1.5" cx="' + x(pts.length - 1) + '" cy="' + y(maxY) + '"/>' +
+           '<text x="' + (x(pts.length - 1) + 8) + '" y="' + (y(maxY) + 4) + '" font-size="12" font-weight="700" fill="#172A4D">' + maxY + '</text>' +
+           '</svg>';
+    box.innerHTML = svg + '<div class="chart-tip" id="chartTip"></div>';
+
+    var tip = document.getElementById('chartTip');
+    var dot = document.getElementById('tipDot');
+    var svgEl = box.querySelector('svg');
+    var endI = pts.length - 1;
+    svgEl.addEventListener('mousemove', function (e) {
+      var r = svgEl.getBoundingClientRect();
+      var mx = (e.clientX - r.left) * (W / r.width);
+      var i = Math.max(0, Math.min(pts.length - 1,
+        Math.round((mx - m.l) / ((W - m.l - m.r) / Math.max(1, pts.length - 1)))));
+      dot.setAttribute('cx', x(i)); dot.setAttribute('cy', y(pts[i].cum));
+      tip.style.display = 'block';
+      tip.style.left = (x(i) * r.width / W) + 'px';
+      tip.style.top = (y(pts[i].cum) * r.height / H - 8) + 'px';
+      tip.textContent = fmtDay(pts[i].day) + ' · ' + pts[i].cum + ' total (+' + pts[i].added + ')';
+    });
+    svgEl.addEventListener('mouseleave', function () {
+      tip.style.display = 'none';
+      dot.setAttribute('cx', x(endI)); dot.setAttribute('cy', y(pts[endI].cum));
+    });
+  }
+
+  window.addEventListener('resize', function () {
+    if (!document.getElementById('dash').hidden && lastTimes) renderTimeChart(lastTimes);
+  });
+
   function render(stats) {
     document.getElementById('login').hidden = true;
     document.getElementById('dash').hidden = false;
@@ -362,6 +480,7 @@
     document.getElementById('shirtMeter').style.width =
       Math.min(100, stats.shirtsClaimed / stats.shirtLimit * 100) + '%';
 
+    renderTimeChart(stats.registrationTimes || []);
     barRows(document.getElementById('catRows'), CATEGORY_ORDER, stats.byCategory || {});
     barRows(document.getElementById('sizeRows'), SHIRT_SIZE_ORDER, stats.byShirtSize || {});
   }
