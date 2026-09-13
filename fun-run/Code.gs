@@ -28,6 +28,33 @@ function doGet(e) {
 }
 
 /**
+ * JSON API for statically hosted copies of the pages (e.g. GitHub
+ * Pages), which call this web app over anonymous fetch() instead of
+ * google.script.run. That path avoids Google's multi-account session
+ * routing, which shows some signed-in visitors a Drive error page.
+ *
+ * Requests are JSON: {action: 'submit', payload} | {action: 'status'} |
+ * {action: 'adminStats', password}. Responses are
+ * {ok: true, result} or {ok: false, error}.
+ */
+function doPost(e) {
+  var out;
+  try {
+    var req = JSON.parse(e && e.postData && e.postData.contents || '');
+    var result;
+    if (req.action === 'submit') result = submitRegistration(req.payload);
+    else if (req.action === 'status') result = getEventStatus();
+    else if (req.action === 'adminStats') result = getAdminStats(req.password);
+    else throw new Error('Unknown action.');
+    out = { ok: true, result: result };
+  } catch (err) {
+    out = { ok: false, error: err && err.message ? err.message : 'Request failed.' };
+  }
+  return ContentService.createTextOutput(JSON.stringify(out))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
  * Called from the page on load so the form knows whether free T-shirts
  * are still available (and for how many more participants).
  */

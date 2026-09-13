@@ -327,8 +327,32 @@
   ];
   var SHIRT_SIZE_ORDER = ['Child M', 'Child XL/Adult XS', 'Adult S', 'Adult M', 'Adult L', 'Adult XL', 'Adult XXL'];
 
-  var LIVE = !!(window.google && window.google.script && window.google.script.run);
+  // Same three modes as the registration page: 'apps-script' (served by
+  // Apps Script), 'remote' (static hosting with SCRIPT_URL set to the web
+  // app /exec URL, called over anonymous fetch), or 'preview' (sample data).
+  var SCRIPT_URL = '';  // set for static deployments; leave '' otherwise
+  var MODE = (window.google && window.google.script && window.google.script.run)
+    ? 'apps-script' : (SCRIPT_URL ? 'remote' : 'preview');
+  var LIVE = MODE !== 'preview';
   var savedPassword = '';
+
+  function callBackend(request, onOk, onErr) {
+    if (MODE === 'apps-script') {
+      google.script.run.withSuccessHandler(onOk).withFailureHandler(onErr)
+        .getAdminStats(request.password);
+    } else {
+      fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(request)
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res && res.ok) onOk(res.result);
+          else throw new Error((res && res.error) || 'Request failed.');
+        })
+        .catch(function (err) { onErr(err); });
+    }
+  }
 
   var DEMO_STATS = {
     updatedAt: new Date().toISOString(),
@@ -495,15 +519,14 @@
     busyBtn.disabled = true;
     var restore = function () { busyBtn.disabled = false; };
     if (LIVE) {
-      google.script.run
-        .withSuccessHandler(function (stats) { restore(); render(stats); })
-        .withFailureHandler(function (err) {
+      callBackend({ action: 'adminStats', password: savedPassword },
+        function (stats) { restore(); render(stats); },
+        function (err) {
           restore();
           var msg = err && err.message ? err.message : 'Something went wrong. Please try again.';
           if (document.getElementById('dash').hidden) showLoginError(msg);
           else alert(msg);
-        })
-        .getAdminStats(savedPassword);
+        });
     } else {
       setTimeout(function () {
         restore();

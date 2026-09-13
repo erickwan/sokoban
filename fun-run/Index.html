@@ -449,11 +449,40 @@
     'Sibling Under 10', 'Sibling Over 10', 'Other'
   ];
 
-  // When served by Google Apps Script, google.script.run is available and
-  // submissions are recorded for real. Anywhere else (e.g. the design
-  // preview) the page runs in simulation mode.
-  var LIVE = !!(window.google && window.google.script && window.google.script.run);
+  // The page runs in one of three modes:
+  //  - 'apps-script': served by Google Apps Script (google.script.run available).
+  //  - 'remote': static hosting (e.g. GitHub Pages) with SCRIPT_URL set to the
+  //    Apps Script web app /exec URL. Requests go over anonymous fetch(), which
+  //    sidesteps Google's multi-account session routing entirely.
+  //  - 'preview': neither — simulation only, nothing saved.
+  var SCRIPT_URL = '';  // set for static deployments; leave '' otherwise
+  var MODE = (window.google && window.google.script && window.google.script.run)
+    ? 'apps-script' : (SCRIPT_URL ? 'remote' : 'preview');
+  var LIVE = MODE !== 'preview';
   var previewBibCounter = 0;
+
+  // request: {action: 'submit', payload} or {action: 'status'}.
+  function callBackend(request, onOk, onErr) {
+    if (MODE === 'apps-script') {
+      var runner = google.script.run.withSuccessHandler(onOk).withFailureHandler(onErr);
+      if (request.action === 'submit') runner.submitRegistration(request.payload);
+      else runner.getEventStatus();
+    } else {
+      // text/plain keeps this a "simple request" (no CORS preflight, which
+      // Apps Script does not answer); cross-origin fetch sends no cookies,
+      // so the call is anonymous regardless of Google sign-in state.
+      fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(request)
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res && res.ok) onOk(res.result);
+          else throw new Error((res && res.error) || 'Request failed.');
+        })
+        .catch(function (err) { onErr(err); });
+    }
+  }
 
   // Peninsula Bridge family mode, enabled with ?pb=1 on the URL: surname
   // fields replace "Last name", category is fixed to "Peninsula Bridge"
@@ -667,13 +696,12 @@
     var restore = function () { btn.disabled = false; btn.textContent = 'Complete registration'; };
 
     if (LIVE) {
-      google.script.run
-        .withSuccessHandler(function (result) { restore(); showConfirmation(result); })
-        .withFailureHandler(function (err) {
+      callBackend({ action: 'submit', payload: payload },
+        function (result) { restore(); showConfirmation(result); },
+        function (err) {
           restore();
           showError((err && err.message ? err.message : 'Something went wrong.') + ' Please try again.');
-        })
-        .submitRegistration(payload);
+        });
     } else {
       // Preview simulation: sequential bibs, nothing saved.
       setTimeout(function () {
@@ -703,13 +731,13 @@
   });
 
   if (LIVE) {
-    google.script.run
-      .withSuccessHandler(function (status) {
-        claimedCount = (status.shirtEligibleCount != null
-          ? status.shirtEligibleCount : status.participantCount) || 0;
-        refresh();
-      })
-      .getEventStatus();
+    callBackend({ action: 'status' }, function (status) {
+      claimedCount = (status.shirtEligibleCount != null
+        ? status.shirtEligibleCount : status.participantCount) || 0;
+      refresh();
+    }, function () { /* leave claimedCount at 0; the server still enforces the cutoff */ });
+  }
+  if (MODE === 'apps-script') {
     // The web app runs in an iframe, so URL parameters arrive via
     // google.script.url rather than location.search.
     if (google.script.url && google.script.url.getLocation) {
@@ -718,6 +746,11 @@
       });
     }
   } else {
+    try {
+      if (new URLSearchParams(window.location.search).get('pb') === '1') setPbMode(true);
+    } catch (e) {}
+  }
+  if (MODE === 'preview') {
     document.getElementById('previewNote').classList.add('on');
     document.getElementById('simulateFull').addEventListener('click', function () {
       claimedCount = SHIRT_LIMIT - 3;
@@ -730,9 +763,6 @@
       setPbMode(!PB_MODE);
       this.textContent = PB_MODE ? 'Back to public form' : 'Preview PB family mode';
     });
-    try {
-      if (new URLSearchParams(window.location.search).get('pb') === '1') setPbMode(true);
-    } catch (e) {}
   }
   if (!runnersEl.children.length) addRunner(false);
 </script>

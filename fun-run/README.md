@@ -39,6 +39,10 @@ A registration website for the Peninsula Bridge Fun Run on **Sunday, October 4, 
 - **Shirt sizes / categories**: `SHIRT_SIZES` and `CATEGORIES` in `Index.html` (category columns also flow through `HEADERS` and `submitRegistration` in `Code.gs`).
 - After editing code, redeploy via **Deploy → Manage deployments → Edit → New version** (the URL stays the same).
 
+## Static hosting on GitHub Pages (optional)
+
+Some signed-in Google users hit a Drive "unable to open the file" page on `script.google.com` URLs (Google's multi-account session routing). Both pages also run from any static host: copy `Index.html` -> `index.html` and `Admin.html` -> `admin.html` into a public GitHub Pages repo and set the `SCRIPT_URL` constant near the top of each file's script to the web app `/exec` URL. The pages then call the backend's JSON API (`doPost` in `Code.gs`) over anonymous `fetch()`, which bypasses Google's account routing entirely. The Apps Script URLs keep working unchanged; `?pb=1` works on the static copy too, and the dashboard becomes `admin.html`.
+
 ## Team testing before launch
 
 Two isolation options — the staging copy is the recommended one:
