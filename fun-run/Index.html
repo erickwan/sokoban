@@ -459,7 +459,6 @@
   var MODE = (window.google && window.google.script && window.google.script.run)
     ? 'apps-script' : (SCRIPT_URL ? 'remote' : 'preview');
   var LIVE = MODE !== 'preview';
-  var previewBibCounter = 0;
 
   // request: {action: 'submit', payload} or {action: 'status'}.
   function callBackend(request, onOk, onErr) {
@@ -703,17 +702,15 @@
           showError((err && err.message ? err.message : 'Something went wrong.') + ' Please try again.');
         });
     } else {
-      // Preview simulation: sequential bibs, nothing saved.
+      // Preview simulation: nothing saved. Only bibs.length is read from
+      // the response, so the participant list stands in for the bib list.
       setTimeout(function () {
-        var bibs = payload.participants.map(function (p) {
-          previewBibCounter += 1;
-          return { bib: previewBibCounter, firstName: p.firstName, lastName: p.lastName || p.fatherSurname };
-        });
+        var n = payload.participants.length;
         restore();
         showConfirmation({
-          bibs: bibs,
-          suggestedDonation: bibs.length * DONATION_PER_RUNNER,
-          shirtEligibleCount: claimedCount + (PB_MODE ? 0 : bibs.length)
+          bibs: payload.participants,
+          suggestedDonation: n * DONATION_PER_RUNNER,
+          shirtEligibleCount: claimedCount + (PB_MODE ? 0 : n)
         });
       }, 500);
     }
@@ -754,7 +751,6 @@
     document.getElementById('previewNote').classList.add('on');
     document.getElementById('simulateFull').addEventListener('click', function () {
       claimedCount = SHIRT_LIMIT - 3;
-      previewBibCounter = claimedCount;
       this.disabled = true;
       this.textContent = 'Simulating ' + claimedCount + ' already registered';
       refresh();
