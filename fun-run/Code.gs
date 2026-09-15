@@ -45,6 +45,8 @@ function doPost(e) {
     if (req.action === 'submit') result = submitRegistration(req.payload);
     else if (req.action === 'status') result = getEventStatus();
     else if (req.action === 'adminStats') result = getAdminStats(req.password);
+    else if (req.action === 'addSponsor') result = addSponsor(req.password, req.sponsor);
+    else if (req.action === 'removeSponsor') result = removeSponsor(req.password, req.row, req.name);
     else throw new Error('Unknown action.');
     out = { ok: true, result: result };
   } catch (err) {
@@ -59,13 +61,105 @@ function doPost(e) {
  * are still available (and for how many more participants).
  */
 function getEventStatus() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  var sheet = registrationsSheet_();
   var props = PropertiesService.getScriptProperties();
   return {
     participantCount: participantCount_(props, sheet),
     shirtEligibleCount: shirtEligibleCount_(props, sheet),
-    shirtLimit: SHIRT_LIMIT
+    shirtLimit: SHIRT_LIMIT,
+    sponsors: listSponsors_()
   };
+}
+
+// The registrations live in the first tab that is not the Sponsors tab,
+// so inserting or reordering the Sponsors tab can't break anything.
+function registrationsSheet_() {
+  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].getName() !== SPONSORS_SHEET_NAME) return sheets[i];
+  }
+  return sheets[0];
+}
+
+function sponsorsSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SPONSORS_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(SPONSORS_SHEET_NAME);
+    sheet.appendRow(['Name', 'Link', 'Image']);
+    SPONSOR_SEEDS.forEach(function (row) { sheet.appendRow(row); });
+  }
+  return sheet;
+}
+
+function listSponsors_() {
+  var sheet = sponsorsSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  return sheet.getRange(2, 1, lastRow - 1, 3).getValues()
+    .map(function (r, i) {
+      return { row: i + 2, name: String(r[0]).trim(), link: String(r[1]).trim(), image: String(r[2]).trim() };
+    })
+    .filter(function (s) { return s.name && s.image; });
+}
+
+/**
+ * Adds a sponsor to the Sponsors tab (admin dashboard tool). `sponsor`
+ * is {name, link, image}; image is an https URL or a data:image/ URI
+ * (the dashboard compresses uploads to fit a sheet cell).
+ * Returns { sponsors } — the updated list.
+ */
+function addSponsor(password, sponsor) {
+  checkAdminPassword_(password);
+  sponsor = sponsor || {};
+  var name = clean_(sponsor.name);
+  var link = String(sponsor.link || '').trim();
+  var image = String(sponsor.image || '').trim();
+  if (!name) throw new Error('Sponsor name is required.');
+  if (!/^https?:\/\//.test(link) || link.length > 500) {
+    throw new Error('Link must be a normal web address starting with http:// or https://.');
+  }
+  if (!/^(https?:\/\/|data:image\/)/.test(image)) {
+    throw new Error('Logo must be an image URL or an uploaded image.');
+  }
+  if (image.length > 45000) throw new Error('Logo image is too large — try a smaller image.');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sheet = sponsorsSheet_();
+    if (sheet.getLastRow() - 1 >= MAX_SPONSORS) {
+      throw new Error('Sponsor list is full (' + MAX_SPONSORS + ' max).');
+    }
+    sheet.appendRow([name, link, image]);
+  } finally {
+    lock.releaseLock();
+  }
+  return { sponsors: listSponsors_() };
+}
+
+/**
+ * Removes the sponsor at `row` after checking the name still matches,
+ * so a stale dashboard can't delete the wrong one.
+ * Returns { sponsors } — the updated list.
+ */
+function removeSponsor(password, row, name) {
+  checkAdminPassword_(password);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sheet = sponsorsSheet_();
+    row = Number(row);
+    if (!(row >= 2 && row <= sheet.getLastRow())) {
+      throw new Error('Sponsor not found — refresh the dashboard and try again.');
+    }
+    if (String(sheet.getRange(row, 1).getValue()).trim() !== String(name || '').trim()) {
+      throw new Error('The sponsor list changed — refresh the dashboard and try again.');
+    }
+    sheet.deleteRow(row);
+  } finally {
+    lock.releaseLock();
+  }
+  return { sponsors: listSponsors_() };
 }
 
 /**
@@ -134,7 +228,7 @@ function submitRegistration(payload) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+    var sheet = registrationsSheet_();
     ensureHeader_(sheet);
 
     var props = PropertiesService.getScriptProperties();
@@ -197,6 +291,26 @@ var HEADERS = ['Bib #', 'First Name', 'Last Name', "Mother's Maiden Name", 'Cate
 // do not consume the SHIRT_LIMIT slots either.
 var PB_CATEGORY = 'Peninsula Bridge';
 
+// Sponsors live in their own sheet tab so organizers can manage them
+// from the admin dashboard instead of editing the site's code. The tab
+// is created and seeded with the launch sponsors on first use.
+var SPONSORS_SHEET_NAME = 'Sponsors';
+var MAX_SPONSORS = 30;
+var SPONSOR_SEEDS = [
+  ['Cardinal Education', 'https://www.cardinaleducation.com/',
+   'https://givebutter.s3.amazonaws.com/uploads/KpbOdTX7TNDG5y6d1rQLtf7Y56Z4TsOTM0Oeubro.jpg'],
+  ['Joy Orthodontics', 'https://www.joyortho.com/',
+   'https://givebutter.s3.amazonaws.com/uploads/UI34av2iRc5NpPjmu2GURtufV50QjQJrpLsbBbXm.jpg'],
+  ['Goodwin', 'https://www.goodwinlaw.com/en',
+   'https://givebutter.s3.amazonaws.com/uploads/9lSyGmLX3CYJYggtnJ2cqrUYoxtmrI8Votg1Cxie.jpg'],
+  ['Webb Builders, Inc.', 'https://www.webbbuilders.net/',
+   'https://givebutter.s3.amazonaws.com/uploads/z07uZp4ElVprsozABoGe7VsEYTybd8Es69XC6N6z.jpg'],
+  ['L&P Aesthetics', 'https://www.fortheface.com/',
+   'https://cdn-ikpfdan.nitrocdn.com/YzeHZQUOdIOPZBhIGhTRntNNUcjWkkcK/assets/images/optimized/rev-8b7f4e8/s43932.pcdn.co/wp-content/uploads/sites/125/2022/04/LP-Logo-Black-rev.png'],
+  ['Nash Design Group', 'https://www.nashdesigngrp.com/',
+   'https://givebutter.s3.amazonaws.com/uploads/my02Yc9gYaz7HwnrnCiCXhKNLa33Poljsji7QV2y.jpg']
+];
+
 /**
  * Summary stats for the organizer dashboard (Admin.html, served at
  * <web app URL>?page=admin). The password lives OUTSIDE the code, in
@@ -205,7 +319,7 @@ var PB_CATEGORY = 'Peninsula Bridge';
  * returned after the password check, so nothing leaks to the page
  * without it.
  */
-function getAdminStats(password) {
+function checkAdminPassword_(password) {
   var stored = PropertiesService.getScriptProperties().getProperty('ADMIN_PASSWORD');
   if (!stored) {
     throw new Error('No admin password is set yet. In the Apps Script editor, open ' +
@@ -213,8 +327,12 @@ function getAdminStats(password) {
   }
   Utilities.sleep(300); // slow down password guessing
   if (String(password || '') !== stored) throw new Error('Incorrect password.');
+}
 
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+function getAdminStats(password) {
+  checkAdminPassword_(password);
+
+  var sheet = registrationsSheet_();
   var lastRow = sheet.getLastRow();
   var rows = lastRow < 2 ? [] : sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues();
   var iCategory = HEADERS.indexOf('Category');
@@ -252,7 +370,8 @@ function getAdminStats(password) {
     byShirtSize: byShirtSize,
     shirtsClaimed: shirtsClaimed,
     shirtLimit: SHIRT_LIMIT,
-    registrationTimes: registrationTimes
+    registrationTimes: registrationTimes,
+    sponsors: listSponsors_()
   };
 }
 
@@ -267,7 +386,7 @@ function resetForLaunch() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+    var sheet = registrationsSheet_();
     if (sheet.getLastRow() > 1) {
       sheet.deleteRows(2, sheet.getLastRow() - 1);
     }

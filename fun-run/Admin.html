@@ -172,6 +172,59 @@
   .meter .fill { height: 100%; background: var(--accent); border-radius: 3px; }
 
   .panel.timeline { margin-top: 14px; }
+  .panel.sponsors-admin { margin-top: 14px; }
+  .sponsor-item {
+    display: grid;
+    grid-template-columns: 96px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--line);
+    font-size: 14px;
+  }
+  .sponsor-item:last-of-type { border-bottom: none; }
+  .sponsor-item img {
+    max-width: 96px;
+    max-height: 40px;
+    object-fit: contain;
+    background: #fff;
+  }
+  .sponsor-item .who { min-width: 0; }
+  .sponsor-item .who a {
+    color: var(--ink-soft);
+    font-size: 12px;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sponsor-item .rm {
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--accent-deep);
+    font: 600 13px var(--body);
+    padding: 5px 14px;
+    cursor: pointer;
+  }
+  .sponsor-item .rm:hover { border-color: var(--accent); background: #FBEDE8; }
+  .sponsor-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 14px;
+    margin-top: 14px;
+  }
+  @media (max-width: 700px) { .sponsor-form-grid { grid-template-columns: 1fr; } }
+  .sponsor-form-grid input[type="text"], .sponsor-form-grid input[type="url"] {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font: 400 14px var(--body);
+    color: var(--ink);
+    background: #fff;
+  }
+  .sponsor-form-grid input[type="file"] { font: 400 13px var(--body); padding-top: 8px; }
   .chart-box { position: relative; }
   .chart-box svg { display: block; width: 100%; }
   .chart-tip {
@@ -300,6 +353,34 @@
         <div class="chart-box" id="timeChart"></div>
       </div>
 
+      <div class="panel sponsors-admin">
+        <h2>Sponsors</h2>
+        <p class="sub">These logos appear at the bottom of the public registration page. Changes go live immediately.</p>
+        <div id="sponsorList"></div>
+        <form id="sponsorForm">
+          <div class="sponsor-form-grid">
+            <div>
+              <label for="spName">Sponsor name</label>
+              <input id="spName" type="text" required>
+            </div>
+            <div>
+              <label for="spLink">Website link</label>
+              <input id="spLink" type="url" placeholder="https://…" required>
+            </div>
+            <div>
+              <label for="spImageUrl">Logo image URL</label>
+              <input id="spImageUrl" type="url" placeholder="https://…/logo.png">
+            </div>
+            <div>
+              <label for="spImageFile">…or upload a logo</label>
+              <input id="spImageFile" type="file" accept="image/*">
+            </div>
+          </div>
+          <button type="submit" class="btn" id="spAddBtn" style="margin-top:12px">Add sponsor</button>
+        </form>
+        <div class="error" id="sponsorError" role="alert"></div>
+      </div>
+
       <div class="panels">
         <div class="panel">
           <h2>Runners by category</h2>
@@ -338,8 +419,10 @@
 
   function callBackend(request, onOk, onErr) {
     if (MODE === 'apps-script') {
-      google.script.run.withSuccessHandler(onOk).withFailureHandler(onErr)
-        .getAdminStats(request.password);
+      var runner = google.script.run.withSuccessHandler(onOk).withFailureHandler(onErr);
+      if (request.action === 'addSponsor') runner.addSponsor(request.password, request.sponsor);
+      else if (request.action === 'removeSponsor') runner.removeSponsor(request.password, request.row, request.name);
+      else runner.getAdminStats(request.password);
     } else {
       fetch(SCRIPT_URL, {
         method: 'POST',
@@ -383,6 +466,16 @@
       acc = target;
     }
     DEMO_STATS.registrationTimes = times;
+    DEMO_STATS.sponsors = ['Sponsor One', 'Sponsor Two'].map(function (name, i) {
+      return {
+        row: i + 2, name: name, link: 'https://example.com/',
+        image: 'data:image/svg+xml;utf8,' + encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="56">' +
+          '<rect width="200" height="56" fill="#F3F6FA"/>' +
+          '<text x="100" y="34" font-family="Arial" font-size="16" fill="#51617D" text-anchor="middle">' +
+          name + '</text></svg>')
+      };
+    });
   })();
 
   function barRows(container, order, counts) {
@@ -507,7 +600,109 @@
     renderTimeChart(stats.registrationTimes || []);
     barRows(document.getElementById('catRows'), CATEGORY_ORDER, stats.byCategory || {});
     barRows(document.getElementById('sizeRows'), SHIRT_SIZE_ORDER, stats.byShirtSize || {});
+    renderSponsorAdmin(stats.sponsors || []);
   }
+
+  /* ---------- Sponsor management ---------- */
+  var sponsorRows = [];
+
+  function showSponsorError(msg) {
+    var el = document.getElementById('sponsorError');
+    el.textContent = msg;
+    el.classList.add('on');
+  }
+
+  function renderSponsorAdmin(list) {
+    sponsorRows = list;
+    var box = document.getElementById('sponsorList');
+    box.innerHTML = '';
+    if (!list.length) {
+      box.innerHTML = '<p class="sub" style="margin:0">No sponsors yet — add the first one below.</p>';
+      return;
+    }
+    list.forEach(function (s) {
+      var item = document.createElement('div'); item.className = 'sponsor-item';
+      var img = document.createElement('img'); img.src = s.image; img.alt = '';
+      var who = document.createElement('div'); who.className = 'who';
+      var strong = document.createElement('strong'); strong.textContent = s.name;
+      var a = document.createElement('a'); a.href = s.link; a.target = '_blank'; a.rel = 'noopener'; a.textContent = s.link;
+      who.appendChild(strong); who.appendChild(a);
+      var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'rm'; rm.textContent = 'Remove';
+      rm.addEventListener('click', function () {
+        if (!confirm('Remove ' + s.name + ' from the registration page?')) return;
+        document.getElementById('sponsorError').classList.remove('on');
+        if (!LIVE) {
+          renderSponsorAdmin(sponsorRows.filter(function (x) { return x !== s; }));
+          return;
+        }
+        callBackend({ action: 'removeSponsor', password: savedPassword, row: s.row, name: s.name },
+          function (res) { renderSponsorAdmin(res.sponsors || []); },
+          function (err) { showSponsorError(err && err.message ? err.message : 'Something went wrong.'); });
+      });
+      item.appendChild(img); item.appendChild(who); item.appendChild(rm);
+      box.appendChild(item);
+    });
+  }
+
+  // Shrinks an uploaded logo (max 400px wide, JPEG on white) until the
+  // data URI fits comfortably in a spreadsheet cell.
+  function compressImageFile(file, done, fail) {
+    var reader = new FileReader();
+    reader.onerror = function () { fail(new Error('Could not read that file.')); };
+    reader.onload = function () {
+      var img = new Image();
+      img.onerror = function () { fail(new Error('That file does not look like an image.')); };
+      img.onload = function () {
+        var scale = Math.min(1, 400 / img.width);
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        var qualities = [0.85, 0.7, 0.55, 0.4];
+        for (var i = 0; i < qualities.length; i++) {
+          var uri = canvas.toDataURL('image/jpeg', qualities[i]);
+          if (uri.length <= 42000) return done(uri);
+        }
+        fail(new Error('That image is too complex to store — try a smaller or simpler logo.'));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  document.getElementById('sponsorForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    document.getElementById('sponsorError').classList.remove('on');
+    var name = document.getElementById('spName').value.trim();
+    var link = document.getElementById('spLink').value.trim();
+    var imageUrl = document.getElementById('spImageUrl').value.trim();
+    var file = document.getElementById('spImageFile').files[0];
+    if (!name || !link) return showSponsorError('Please fill in the sponsor name and website link.');
+    if (!imageUrl && !file) return showSponsorError('Add a logo: paste an image URL or upload a file.');
+    var btn = document.getElementById('spAddBtn');
+    btn.disabled = true; btn.textContent = 'Adding…';
+    var restore = function () { btn.disabled = false; btn.textContent = 'Add sponsor'; };
+    var submitWith = function (image) {
+      if (!LIVE) {
+        renderSponsorAdmin(sponsorRows.concat([{ row: 0, name: name, link: link, image: image }]));
+        document.getElementById('sponsorForm').reset();
+        restore();
+        return;
+      }
+      callBackend({ action: 'addSponsor', password: savedPassword, sponsor: { name: name, link: link, image: image } },
+        function (res) {
+          renderSponsorAdmin(res.sponsors || []);
+          document.getElementById('sponsorForm').reset();
+          restore();
+        },
+        function (err) { restore(); showSponsorError(err && err.message ? err.message : 'Something went wrong.'); });
+    };
+    if (file) compressImageFile(file, submitWith, function (err) { restore(); showSponsorError(err.message); });
+    else submitWith(imageUrl);
+  });
 
   function showLoginError(msg) {
     var el = document.getElementById('loginError');

@@ -11,7 +11,7 @@ A registration website for the Peninsula Bridge Fun Run on **Sunday, October 4, 
 - Appends one row per participant to the Google Sheet: `Bib #, First Name, Last Name, Mother's Maiden Name, Category, T-Shirt Size, Contact Name, Contact Email, Contact Phone, Registered At`. The header row is kept in sync automatically (`ensureHeader_`), so column changes in `Code.gs` show up in the sheet on the next submission.
 
 - **Peninsula Bridge family variant** at `<web app URL>?pb=1`: the runner card asks for first name, **father's surname**, and **mother's maiden name** (no last-name field), the category is hidden and recorded as `Peninsula Bridge`, there is no T-shirt picker, and no suggested donation is shown anywhere. Father's surname is stored in the Last Name column; the maiden name goes in its own column. PB registrations get bibs and count as participants, but do **not** consume the 100 free-tee slots (they can never claim one).
-- **Password-protected organizer dashboard** at `<web app URL>?page=admin`: number of families (unique contact emails), total participants, a cumulative sign-ups-over-time chart, runners by category, and claimed T-shirts by size, with a refresh button. The password is checked server-side (stats are never sent to the browser without it) and lives in Script Properties, not in the code.
+- **Password-protected organizer dashboard** at `<web app URL>?page=admin`: number of families (unique contact emails), total participants, a cumulative sign-ups-over-time chart, runners by category, claimed T-shirts by size, and a **sponsor manager** — organizers add a sponsor (name, website link, and a logo URL or an uploaded image, auto-compressed in the browser) or remove one, and the public page updates immediately. Sponsors live in a `Sponsors` tab of the spreadsheet (auto-created and seeded with the launch sponsors on first use); row order there is display order. The password is checked server-side (stats are never sent to the browser without it) and lives in Script Properties, not in the code.
 
 ## Files
 
@@ -37,6 +37,7 @@ A registration website for the Peninsula Bridge Fun Run on **Sunday, October 4, 
 - **Shirt limit**: `SHIRT_LIMIT` in both `Code.gs` and `Index.html`.
 - **Donation link**: the `donateLink` anchor in `Index.html`.
 - **Shirt sizes / categories**: `SHIRT_SIZES` and `CATEGORIES` in `Index.html` (category columns also flow through `HEADERS` and `submitRegistration` in `Code.gs`).
+- **Sponsors**: no code change needed — use the dashboard's Sponsors panel (or edit the `Sponsors` sheet tab directly).
 - After editing code, redeploy via **Deploy → Manage deployments → Edit → New version** (the URL stays the same).
 
 ## Static hosting on GitHub Pages (optional)
