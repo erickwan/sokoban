@@ -231,6 +231,34 @@ function submitRegistration(payload) {
     var sheet = registrationsSheet_();
     ensureHeader_(sheet);
 
+    // Duplicate guard: reject runners who are already registered under
+    // this contact email, so a double-click or a re-submitted form can't
+    // create duplicate rows (or eat free-tee slots). Runs inside the
+    // lock, so two simultaneous submissions can't both get through.
+    var lastRowNow = sheet.getLastRow();
+    if (lastRowNow > 1) {
+      var iFirst = HEADERS.indexOf('First Name');
+      var iLast = HEADERS.indexOf('Last Name');
+      var iEmailCol = HEADERS.indexOf('Contact Email');
+      var existing = {};
+      sheet.getRange(2, 1, lastRowNow - 1, HEADERS.length).getValues().forEach(function (row) {
+        if (String(row[iEmailCol]).trim().toLowerCase() === contactEmail.toLowerCase()) {
+          existing[String(row[iFirst]).trim().toLowerCase() + '|' +
+                   String(row[iLast]).trim().toLowerCase()] = true;
+        }
+      });
+      var already = participants.filter(function (p) {
+        return existing[p.firstName.toLowerCase() + '|' + p.lastName.toLowerCase()];
+      }).map(function (p) { return p.firstName + ' ' + p.lastName; });
+      if (already.length) {
+        throw new Error(
+          (already.length === 1 ? already[0] + ' is' : already.join(', ') + ' are') +
+          ' already registered under this contact email. To add more runners, submit just the new ' +
+          'ones; to change an existing registration, email ' +
+          (pb ? 'suzanne@peninsulabridge.org' : 'janice.chan@gmail.com') + '.');
+      }
+    }
+
     var props = PropertiesService.getScriptProperties();
     var lastBib = Math.max(
       Number(props.getProperty('lastBib')) || 0,
