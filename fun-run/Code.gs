@@ -399,6 +399,37 @@ function resetForLaunch() {
   }
 }
 
+/**
+ * Recomputes the Script Properties counters from what is actually in
+ * the sheet — run after manually deleting rows (e.g. duplicate
+ * registrations) so the shirt cutoff and participant counts stay
+ * accurate. Bib numbers of deleted rows are simply never used again.
+ *
+ * Editor-only, like resetForLaunch: select "recountFromSheet" in the
+ * function dropdown and click Run.
+ */
+function recountFromSheet() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sheet = registrationsSheet_();
+    var lastRow = sheet.getLastRow();
+    var shirtEligible = 0;
+    if (lastRow > 1) {
+      sheet.getRange(2, HEADERS.indexOf('Category') + 1, lastRow - 1, 1).getValues()
+        .forEach(function (row) {
+          if (String(row[0]).trim() !== PB_CATEGORY) shirtEligible += 1;
+        });
+    }
+    var props = PropertiesService.getScriptProperties();
+    props.setProperty('participantCount', String(Math.max(0, lastRow - 1)));
+    props.setProperty('shirtEligibleCount', String(shirtEligible));
+    props.setProperty('lastBib', String(maxBibInSheet_(sheet)));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // Keeps row 1 matching HEADERS, so adding or removing a column here
 // updates the sheet automatically on the next submission (leftover
 // header cells beyond HEADERS are blanked).
