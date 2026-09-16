@@ -112,6 +112,13 @@
   .hero-photo.single .car-btn,
   .hero-photo.single .car-dots,
   .hero-photo.single .car-slide { display: none; }
+  .photo-credit {
+    text-align: center;
+    font-size: 11px;
+    color: var(--ink-soft);
+    letter-spacing: 0.04em;
+    margin: 8px 0 0;
+  }
   .eyebrow {
     text-transform: uppercase;
     letter-spacing: 0.14em;
@@ -419,6 +426,7 @@
       <button type="button" class="car-btn next" id="carNext" aria-label="Next photo">&#8250;</button>
       <div class="car-dots" id="carDots"></div>
     </div>
+    <p class="photo-credit" id="photoCredit"></p>
     <p class="eyebrow" id="eyebrowLine"></p>
     <p class="lede" id="lede"></p>
   </header>
@@ -506,6 +514,7 @@
     heroDate: '10\u00b704',
     heroAlt: 'Kids sprint from the inflatable start arch at a past Peninsula Bridge Fun Run',
     pbHeroAlt: 'A father and daughter run hand in hand at a past Peninsula Bridge Fun Run',
+    photoCreditText: 'Photos: Dylan Cummins',
     carouselAlts: [   // one per extra carousel photo, in order
       'Friends blast color powder at a runner sprinting past',
       'A runner breaks through clouds of pink and yellow color powder',
@@ -561,6 +570,7 @@
   document.getElementById('heroLogo').alt = CONFIG.logoAlt;
   document.getElementById('heroDate').textContent = CONFIG.heroDate;
   document.getElementById('heroImg').alt = CONFIG.heroAlt;
+  document.getElementById('photoCredit').textContent = CONFIG.photoCreditText;
   (function () {
     var slides = document.querySelectorAll('.car-slide');
     for (var i = 0; i < slides.length; i++) slides[i].alt = CONFIG.carouselAlts[i] || '';
