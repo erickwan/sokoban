@@ -225,6 +225,7 @@ function submitRegistration(payload) {
 
   // The lock is what guarantees bib numbers are never duplicated:
   // only one submission at a time may read the counter, assign, and write.
+  var result;
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -288,6 +289,7 @@ function submitRegistration(payload) {
           shirtSize = '';
         }
       }
+      p.finalShirtSize = shirtSize;
       bibs.push({ bib: lastBib, firstName: p.firstName, lastName: p.lastName });
       rows.push([lastBib, p.firstName, p.lastName, p.motherMaidenName, p.category, shirtSize,
                  contactName, contactEmail, contactPhone, now]);
@@ -298,7 +300,7 @@ function submitRegistration(payload) {
     props.setProperty('participantCount', String(participantCount));
     props.setProperty('shirtEligibleCount', String(shirtEligible));
 
-    return {
+    result = {
       bibs: bibs,
       suggestedDonation: participants.length * DONATION_PER_RUNNER,
       participantCount: participantCount,
@@ -308,6 +310,103 @@ function submitRegistration(payload) {
   } finally {
     lock.releaseLock();
   }
+
+  // Outside the lock: email failures must never fail a recorded
+  // registration, and sending is slow enough not to hold the lock for.
+  try {
+    sendConfirmationEmail_(contactName, contactEmail, participants, pb, result.suggestedDonation);
+  } catch (mailErr) {
+    console.error('Confirmation email failed for ' + contactEmail + ': ' + mailErr);
+  }
+  return result;
+}
+
+// Confirmation email, sent to the group's contact after a successful
+// registration. Kept as plain functions of the submission data so the
+// copy is easy to edit in one place.
+var EVENT_INFO = {
+  when: 'Sunday, October 4, 2026',
+  where: 'Menlo School · 50 Valparaiso Ave, Atherton',
+  times: 'Check-in 8:30 AM · Run starts 9:00 AM'
+};
+// Public registrations point to Janice/Kavya; pb=1 registrations point
+// to Suzanne, matching each form's own contact line.
+var ORGANIZERS_TEXT = 'Janice Chan (janice.chan@gmail.com) or Kavya (kavyashree.ks@gmail.com)';
+var ORGANIZERS_HTML = '<a href="mailto:janice.chan@gmail.com" style="color:#C93A14">Janice Chan</a> ' +
+                      'or <a href="mailto:kavyashree.ks@gmail.com" style="color:#C93A14">Kavya</a>';
+var PB_ORGANIZERS_TEXT = 'Suzanne OBrien (suzanne@peninsulabridge.org)';
+var PB_ORGANIZERS_HTML = '<a href="mailto:suzanne@peninsulabridge.org" style="color:#C93A14">Suzanne OBrien</a>';
+var DONATION_URL = 'https://givebutter.com/peninsula-bridge-fun-run-2026';
+
+function escapeHtml_(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function sendConfirmationEmail_(contactName, contactEmail, participants, pb, suggestedDonation) {
+  var runnerLine = function (p) {
+    var extras = [];
+    if (!pb) {
+      extras.push(p.category);
+      if (p.finalShirtSize) extras.push('T-shirt: ' + p.finalShirtSize);
+    }
+    return p.firstName + ' ' + p.lastName + (extras.length ? ' — ' + extras.join(', ') : '');
+  };
+
+  var body =
+    'Hi ' + contactName + ',\n\n' +
+    "You're registered for the Peninsula Bridge Fun Run 2026!\n\n" +
+    'Event details\n' +
+    '  ' + EVENT_INFO.when + '\n' +
+    '  ' + EVENT_INFO.where + '\n' +
+    '  ' + EVENT_INFO.times + '\n\n' +
+    'Your runners\n' +
+    participants.map(function (p) { return '  - ' + runnerLine(p); }).join('\n') + '\n\n' +
+    (pb ? '' :
+      'A suggested donation of $' + DONATION_PER_RUNNER + ' per runner ($' + suggestedDonation +
+      ' for your group) goes straight to Peninsula Bridge: ' + DONATION_URL + '\n\n') +
+    'Need to update your registration? Contact the organizers — ' +
+    (pb ? PB_ORGANIZERS_TEXT : ORGANIZERS_TEXT) + '.\n\n' +
+    'See you at the starting line!\n' +
+    'Peninsula Bridge Fun Run 2026';
+
+  var htmlBody =
+    '<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#172A4D">' +
+      '<div style="background:#F04E23;color:#ffffff;padding:20px 24px;border-radius:10px 10px 0 0">' +
+        '<div style="font-size:21px;font-weight:bold">Peninsula Bridge Fun Run 2026</div>' +
+        '<div style="font-size:14px;opacity:0.92">You&#39;re registered!</div>' +
+      '</div>' +
+      '<div style="border:1px solid #D8E0EC;border-top:none;padding:24px;border-radius:0 0 10px 10px">' +
+        '<p style="margin:0 0 16px">Hi ' + escapeHtml_(contactName) + ', thanks for signing up. See you on race day!</p>' +
+        '<p style="margin:0 0 4px;font-size:12px;letter-spacing:1px;color:#51617D"><strong>EVENT DETAILS</strong></p>' +
+        '<p style="margin:0 0 16px;line-height:1.5">' +
+          escapeHtml_(EVENT_INFO.when) + '<br>' +
+          escapeHtml_(EVENT_INFO.where) + '<br>' +
+          escapeHtml_(EVENT_INFO.times) + '</p>' +
+        '<p style="margin:0 0 4px;font-size:12px;letter-spacing:1px;color:#51617D"><strong>YOUR RUNNERS</strong></p>' +
+        '<ul style="margin:0 0 16px;padding-left:20px;line-height:1.6">' +
+          participants.map(function (p) { return '<li>' + escapeHtml_(runnerLine(p)) + '</li>'; }).join('') +
+        '</ul>' +
+        (pb ? '' :
+          '<p style="margin:0 0 8px">A suggested donation of <strong>$' + DONATION_PER_RUNNER +
+          ' per runner</strong> ($' + suggestedDonation + ' for your group) goes straight to Peninsula Bridge.</p>' +
+          '<p style="margin:0 0 20px"><a href="' + DONATION_URL + '" ' +
+          'style="background:#157A4E;color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:999px;display:inline-block">' +
+          'Donate to Peninsula Bridge</a></p>') +
+        '<p style="margin:0;border-top:1px solid #D8E0EC;padding-top:14px;color:#51617D;font-size:14px">' +
+          'Need to update your registration? Contact the organizers — ' +
+          (pb ? PB_ORGANIZERS_HTML : ORGANIZERS_HTML) + '.</p>' +
+      '</div>' +
+    '</div>';
+
+  MailApp.sendEmail({
+    to: contactEmail,
+    replyTo: pb ? 'suzanne@peninsulabridge.org' : 'janice.chan@gmail.com',
+    name: 'Peninsula Bridge Fun Run',
+    subject: "You're registered — Peninsula Bridge Fun Run 2026",
+    body: body,
+    htmlBody: htmlBody
+  });
 }
 
 var HEADERS = ['Bib #', 'First Name', 'Last Name', "Mother's Maiden Name", 'Category',
