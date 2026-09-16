@@ -33,14 +33,18 @@ A registration website for the Peninsula Bridge Fun Run on **Sunday, October 4, 
    - *Who has access:* **Anyone**
 7. Authorize when prompted, then copy the web app URL — that's the public registration link to share with participants. The organizer dashboard is the same URL with `?page=admin` appended.
 
-## Making changes
+## Making changes / setting up next year
 
-- **Donation amount**: `DONATION_PER_RUNNER` in both `Code.gs` and `Index.html`.
-- **Shirt limit**: `SHIRT_LIMIT` in both `Code.gs` and `Index.html`.
-- **Donation link**: the `donateLink` anchor in `Index.html`.
-- **Shirt sizes / categories**: `SHIRT_SIZES` and `CATEGORIES` in `Index.html` (category columns also flow through `HEADERS` and `submitRegistration` in `Code.gs`).
-- **Sponsors**: no code change needed — use the dashboard's Sponsors panel (or edit the `Sponsors` sheet tab directly).
-- After editing code, redeploy via **Deploy → Manage deployments → Edit → New version** (the URL stays the same).
+All year-specific values live in one `CONFIG` object at the top of each file:
+
+- **`Code.gs` CONFIG** — event title/date/place/times (used in the confirmation email), donation amount and link, shirt limit, first bib, max runners per submission, organizer contacts (public + pb), category and shirt-size lists, and the sponsor rows the `Sponsors` tab is seeded with on first use.
+- **`Index.html` CONFIG** — everything the registration page shows: title, hero date, event details, the blurb, contacts (public + pb), donation amount/link/button, shirt limit and sizes, categories, confirmation copy, footer. The markup contains no event text — it is all rendered from CONFIG.
+- **`Admin.html` CONFIG** — just the dashboard's eyebrow line; category/size orders come from the server once logged in.
+
+For a new year: update the three CONFIG blocks consistently (donation amount, shirt limit, sizes, and categories appear in both `Code.gs` and `Index.html`), swap the hero photos in `Index.html` if desired, then `clasp push` + `clasp deploy -i <id>` and update the GitHub Pages copies. Operationally also: make a fresh registration spreadsheet (or run `resetForLaunch`), create the new year's Givebutter page, refresh the `Sponsors` tab, set `ADMIN_PASSWORD`, and regenerate the QR codes for the new links.
+
+- **Sponsors during the season**: no code change needed — use the dashboard's Sponsors panel (or edit the `Sponsors` sheet tab directly).
+- After editing code, redeploy via clasp (`clasp push` + `clasp deploy -i <id>`) or **Deploy → Manage deployments → Edit → New version** (the URL stays the same).
 
 ## Deploying with clasp (no more copy-paste)
 

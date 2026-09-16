@@ -11,19 +11,64 @@
  * against the sheet, so bibs are never reused even if rows are deleted.
  */
 
-var DONATION_PER_RUNNER = 25;
-var MAX_RUNNERS_PER_SUBMISSION = 20;
-var FIRST_BIB = 1;
+/* ======================= EVENT CONFIGURATION =======================
+ * Everything year-specific for the backend lives in this one object.
+ * (The visible page text lives in the CONFIG block at the top of
+ * Index.html / Admin.html.) For next year: update these, update the
+ * HTML CONFIGs, then `clasp push` + `clasp deploy -i <id>`.
+ * =================================================================== */
+var CONFIG = {
+  eventTitle: 'Peninsula Bridge Fun Run 2026',
+  when: 'Sunday, October 4, 2026',
+  where: 'Menlo School \u00b7 50 Valparaiso Ave, Atherton',
+  times: 'Check-in 8:30 AM \u00b7 Run starts 9:00 AM',
+  donationPerRunner: 25,
+  donationUrl: 'https://givebutter.com/peninsula-bridge-fun-run-2026',
+  shirtLimit: 100,          // free tees for the first N shirt-eligible participants
+  firstBib: 1,
+  maxRunnersPerSubmission: 20,
+  organizersText: 'Janice Chan (janice.chan@gmail.com) or Kavya (kavyashree.ks@gmail.com)',
+  organizersHtml: '<a href="mailto:janice.chan@gmail.com" style="color:#C93A14">Janice Chan</a> ' +
+                  'or <a href="mailto:kavyashree.ks@gmail.com" style="color:#C93A14">Kavya</a>',
+  organizersReplyTo: 'janice.chan@gmail.com',
+  pbOrganizersText: 'Suzanne OBrien (suzanne@peninsulabridge.org)',
+  pbOrganizersHtml: '<a href="mailto:suzanne@peninsulabridge.org" style="color:#C93A14">Suzanne OBrien</a>',
+  pbOrganizersReplyTo: 'suzanne@peninsulabridge.org',
+  categoryOrder: [
+    'Student Grade 6', 'Student Grade 7', 'Student Grade 8', 'Student Grade 9',
+    'Student Grade 10', 'Student Grade 11', 'Student Grade 12',
+    'Alum', 'Faculty/Staff', 'Parent/Guardian',
+    'Sibling Under 10', 'Sibling Over 10', 'Other', 'Peninsula Bridge'
+  ],
+  shirtSizeOrder: ['Child M', 'Child XL/Adult XS', 'Adult S', 'Adult M', 'Adult L', 'Adult XL', 'Adult XXL'],
+  // Rows the Sponsors tab is seeded with the first time it is created
+  // ([name, link, image]); after that the tab itself is the source of truth.
+  initialSponsors: [
+  ['Cardinal Education', 'https://www.cardinaleducation.com/',
+   'https://givebutter.s3.amazonaws.com/uploads/KpbOdTX7TNDG5y6d1rQLtf7Y56Z4TsOTM0Oeubro.jpg'],
+  ['Joy Orthodontics', 'https://www.joyortho.com/',
+   'https://givebutter.s3.amazonaws.com/uploads/UI34av2iRc5NpPjmu2GURtufV50QjQJrpLsbBbXm.jpg'],
+  ['Goodwin', 'https://www.goodwinlaw.com/en',
+   'https://givebutter.s3.amazonaws.com/uploads/9lSyGmLX3CYJYggtnJ2cqrUYoxtmrI8Votg1Cxie.jpg'],
+  ['Webb Builders, Inc.', 'https://www.webbbuilders.net/',
+   'https://givebutter.s3.amazonaws.com/uploads/z07uZp4ElVprsozABoGe7VsEYTybd8Es69XC6N6z.jpg'],
+  ['L&P Aesthetics', 'https://www.fortheface.com/',
+   'https://cdn-ikpfdan.nitrocdn.com/YzeHZQUOdIOPZBhIGhTRntNNUcjWkkcK/assets/images/optimized/rev-8b7f4e8/s43932.pcdn.co/wp-content/uploads/sites/125/2022/04/LP-Logo-Black-rev.png'],
+  ['Nash Design Group', 'https://www.nashdesigngrp.com/',
+   'https://givebutter.s3.amazonaws.com/uploads/my02Yc9gYaz7HwnrnCiCXhKNLa33Poljsji7QV2y.jpg']
+  ]
+};
 
-// Free tees for the first SHIRT_LIMIT registered participants. This is
-// counted with its own participant counter, NOT bib numbers, so the bib
-// allocation logic can change without affecting the shirt cutoff.
-var SHIRT_LIMIT = 100;
+// Aliases so the rest of the code reads naturally.
+var DONATION_PER_RUNNER = CONFIG.donationPerRunner;
+var MAX_RUNNERS_PER_SUBMISSION = CONFIG.maxRunnersPerSubmission;
+var FIRST_BIB = CONFIG.firstBib;
+var SHIRT_LIMIT = CONFIG.shirtLimit;
 
 function doGet(e) {
   var admin = e && e.parameter && e.parameter.page === 'admin';
   return HtmlService.createHtmlOutputFromFile(admin ? 'Admin' : 'Index')
-    .setTitle(admin ? 'Fun Run Dashboard' : 'Peninsula Bridge Fun Run 2026')
+    .setTitle(admin ? 'Fun Run Dashboard' : CONFIG.eventTitle)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
@@ -67,7 +112,9 @@ function getEventStatus() {
     participantCount: participantCount_(props, sheet),
     shirtEligibleCount: shirtEligibleCount_(props, sheet),
     shirtLimit: SHIRT_LIMIT,
-    sponsors: listSponsors_()
+    sponsors: listSponsors_(),
+    categoryOrder: CONFIG.categoryOrder,
+    shirtSizeOrder: CONFIG.shirtSizeOrder
   };
 }
 
@@ -322,21 +369,13 @@ function submitRegistration(payload) {
 }
 
 // Confirmation email, sent to the group's contact after a successful
-// registration. Kept as plain functions of the submission data so the
-// copy is easy to edit in one place.
-var EVENT_INFO = {
-  when: 'Sunday, October 4, 2026',
-  where: 'Menlo School · 50 Valparaiso Ave, Atherton',
-  times: 'Check-in 8:30 AM · Run starts 9:00 AM'
-};
-// Public registrations point to Janice/Kavya; pb=1 registrations point
-// to Suzanne, matching each form's own contact line.
-var ORGANIZERS_TEXT = 'Janice Chan (janice.chan@gmail.com) or Kavya (kavyashree.ks@gmail.com)';
-var ORGANIZERS_HTML = '<a href="mailto:janice.chan@gmail.com" style="color:#C93A14">Janice Chan</a> ' +
-                      'or <a href="mailto:kavyashree.ks@gmail.com" style="color:#C93A14">Kavya</a>';
-var PB_ORGANIZERS_TEXT = 'Suzanne OBrien (suzanne@peninsulabridge.org)';
-var PB_ORGANIZERS_HTML = '<a href="mailto:suzanne@peninsulabridge.org" style="color:#C93A14">Suzanne OBrien</a>';
-var DONATION_URL = 'https://givebutter.com/peninsula-bridge-fun-run-2026';
+// registration. All copy comes from CONFIG.
+var EVENT_INFO = { when: CONFIG.when, where: CONFIG.where, times: CONFIG.times };
+var ORGANIZERS_TEXT = CONFIG.organizersText;
+var ORGANIZERS_HTML = CONFIG.organizersHtml;
+var PB_ORGANIZERS_TEXT = CONFIG.pbOrganizersText;
+var PB_ORGANIZERS_HTML = CONFIG.pbOrganizersHtml;
+var DONATION_URL = CONFIG.donationUrl;
 
 function escapeHtml_(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -355,7 +394,7 @@ function sendConfirmationEmail_(contactName, contactEmail, participants, pb, sug
 
   var body =
     'Hi ' + contactName + ',\n\n' +
-    "You're registered for the Peninsula Bridge Fun Run 2026!\n\n" +
+    "You're registered for the " + CONFIG.eventTitle + "!\n\n" +
     'Event details\n' +
     '  ' + EVENT_INFO.when + '\n' +
     '  ' + EVENT_INFO.where + '\n' +
@@ -368,12 +407,12 @@ function sendConfirmationEmail_(contactName, contactEmail, participants, pb, sug
     'Need to update your registration? Contact the organizers — ' +
     (pb ? PB_ORGANIZERS_TEXT : ORGANIZERS_TEXT) + '.\n\n' +
     'See you at the starting line!\n' +
-    'Peninsula Bridge Fun Run 2026';
+    CONFIG.eventTitle;
 
   var htmlBody =
     '<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#172A4D">' +
       '<div style="background:#F04E23;color:#ffffff;padding:20px 24px;border-radius:10px 10px 0 0">' +
-        '<div style="font-size:21px;font-weight:bold">Peninsula Bridge Fun Run 2026</div>' +
+        '<div style="font-size:21px;font-weight:bold">' + escapeHtml_(CONFIG.eventTitle) + '</div>' +
         '<div style="font-size:14px;opacity:0.92">You&#39;re registered!</div>' +
       '</div>' +
       '<div style="border:1px solid #D8E0EC;border-top:none;padding:24px;border-radius:0 0 10px 10px">' +
@@ -401,9 +440,9 @@ function sendConfirmationEmail_(contactName, contactEmail, participants, pb, sug
 
   MailApp.sendEmail({
     to: contactEmail,
-    replyTo: pb ? 'suzanne@peninsulabridge.org' : 'janice.chan@gmail.com',
-    name: 'Peninsula Bridge Fun Run',
-    subject: "You're registered — Peninsula Bridge Fun Run 2026",
+    replyTo: pb ? CONFIG.pbOrganizersReplyTo : CONFIG.organizersReplyTo,
+    name: CONFIG.eventTitle,
+    subject: "You're registered \u2014 " + CONFIG.eventTitle,
     body: body,
     htmlBody: htmlBody
   });
@@ -441,20 +480,7 @@ var PB_CATEGORY = 'Peninsula Bridge';
 // is created and seeded with the launch sponsors on first use.
 var SPONSORS_SHEET_NAME = 'Sponsors';
 var MAX_SPONSORS = 30;
-var SPONSOR_SEEDS = [
-  ['Cardinal Education', 'https://www.cardinaleducation.com/',
-   'https://givebutter.s3.amazonaws.com/uploads/KpbOdTX7TNDG5y6d1rQLtf7Y56Z4TsOTM0Oeubro.jpg'],
-  ['Joy Orthodontics', 'https://www.joyortho.com/',
-   'https://givebutter.s3.amazonaws.com/uploads/UI34av2iRc5NpPjmu2GURtufV50QjQJrpLsbBbXm.jpg'],
-  ['Goodwin', 'https://www.goodwinlaw.com/en',
-   'https://givebutter.s3.amazonaws.com/uploads/9lSyGmLX3CYJYggtnJ2cqrUYoxtmrI8Votg1Cxie.jpg'],
-  ['Webb Builders, Inc.', 'https://www.webbbuilders.net/',
-   'https://givebutter.s3.amazonaws.com/uploads/z07uZp4ElVprsozABoGe7VsEYTybd8Es69XC6N6z.jpg'],
-  ['L&P Aesthetics', 'https://www.fortheface.com/',
-   'https://cdn-ikpfdan.nitrocdn.com/YzeHZQUOdIOPZBhIGhTRntNNUcjWkkcK/assets/images/optimized/rev-8b7f4e8/s43932.pcdn.co/wp-content/uploads/sites/125/2022/04/LP-Logo-Black-rev.png'],
-  ['Nash Design Group', 'https://www.nashdesigngrp.com/',
-   'https://givebutter.s3.amazonaws.com/uploads/my02Yc9gYaz7HwnrnCiCXhKNLa33Poljsji7QV2y.jpg']
-];
+var SPONSOR_SEEDS = CONFIG.initialSponsors;
 
 /**
  * Summary stats for the organizer dashboard (Admin.html, served at
@@ -516,7 +542,9 @@ function getAdminStats(password) {
     shirtsClaimed: shirtsClaimed,
     shirtLimit: SHIRT_LIMIT,
     registrationTimes: registrationTimes,
-    sponsors: listSponsors_()
+    sponsors: listSponsors_(),
+    categoryOrder: CONFIG.categoryOrder,
+    shirtSizeOrder: CONFIG.shirtSizeOrder
   };
 }
 

@@ -308,7 +308,7 @@
 
 <div class="wrap">
   <header>
-    <p class="eyebrow">Peninsula Bridge Fun Run · 10.04.26</p>
+    <p class="eyebrow" id="eyebrowLine"></p>
     <h1>Race Day Dashboard</h1>
   </header>
 
@@ -400,6 +400,16 @@
 </div>
 
 <script>
+  /* ===================== EVENT CONFIGURATION =====================
+   * The dashboard shows very little year-specific text; category and
+   * shirt-size orders come from the server (Code.gs CONFIG) once
+   * logged in — the lists below are only the preview fallback.
+   * =============================================================== */
+  var CONFIG = {
+    eyebrowText: 'Peninsula Bridge Fun Run \u00b7 10.04.26'
+  };
+  document.getElementById('eyebrowLine').textContent = CONFIG.eyebrowText;
+
   var CATEGORY_ORDER = [
     'Student Grade 6', 'Student Grade 7', 'Student Grade 8', 'Student Grade 9',
     'Student Grade 10', 'Student Grade 11', 'Student Grade 12',
@@ -615,8 +625,8 @@
       Math.min(100, stats.shirtsClaimed / stats.shirtLimit * 100) + '%';
 
     renderTimeChart(stats.registrationTimes || []);
-    barRows(document.getElementById('catRows'), CATEGORY_ORDER, stats.byCategory || {});
-    barRows(document.getElementById('sizeRows'), SHIRT_SIZE_ORDER, stats.byShirtSize || {});
+    barRows(document.getElementById('catRows'), stats.categoryOrder || CATEGORY_ORDER, stats.byCategory || {});
+    barRows(document.getElementById('sizeRows'), stats.shirtSizeOrder || SHIRT_SIZE_ORDER, stats.byShirtSize || {});
     renderSponsorAdmin(stats.sponsors || []);
   }
 
