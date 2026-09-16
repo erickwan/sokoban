@@ -270,6 +270,12 @@
   #done { display: none; }
   #done.on { display: block; }
   #reg.off { display: none; }
+
+  /* ---------- Registration closed ---------- */
+  #closed { display: none; }
+  #closed.on { display: block; }
+  #reg.closed { display: none; }
+  #closed .hint { font-size: 16px; max-width: 640px; }
   .cheer {
     font-family: var(--display);
     font-weight: 400;
@@ -337,6 +343,7 @@
   The deployed site assigns real bibs and records registrations in the Google Sheet.
   <button type="button" id="simulateFull">Simulate 97 already registered</button>
   <button type="button" id="togglePb">Preview PB family mode</button>
+  <button type="button" id="toggleClosed">Simulate registration closed</button>
 </div>
 
 <div class="wrap">
@@ -408,6 +415,16 @@
 
       <button type="button" class="again" id="again">Register more runners</button>
     </section>
+
+    <section id="closed" aria-label="Registration closed">
+      <p class="cheer" id="closedTitle"></p>
+      <p class="hint" id="closedMessage"></p>
+      <div class="donate" id="closedDonate">
+        <h3 id="closedDonateHead"></h3>
+        <p id="closedDonateDetail"></p>
+        <a class="btn go" id="closedDonateLink" href="#" target="_blank" rel="noopener"></a>
+      </div>
+    </section>
   </main>
 
   <section class="sponsors" id="sponsors" aria-label="Event sponsors" hidden>
@@ -446,6 +463,12 @@
       'goes straight to Peninsula Bridge.',
     pbLedeHtml: 'Welcome, Peninsula Bridge families! Register everyone in your group below.',
     confirmationTail: 'we\u2019ll have the printed bibs waiting at check-in, which opens at 8:30 AM (the run starts at 9:00 AM).',
+    closedTitle: 'Registration is now closed',
+    closedHtml: 'Feel free to show up on the day of \u2014 there will be a limited number of ' +
+      'bibs with timers for unregistered runners, first come, first served.',
+    closedDonateHeading: 'Suggested donation: $25 per runner',
+    closedDonateHtml: 'Joining us on race day? Donations to Peninsula Bridge are still warmly welcome.',
+    pbClosedLede: 'Welcome, Peninsula Bridge families!',
     donationPerRunner: 25,
     donationUrl: 'https://givebutter.com/peninsula-bridge-fun-run-2026',
     donateButtonText: 'Donate to Peninsula Bridge',
@@ -485,6 +508,13 @@
   donateEl.href = CONFIG.donationUrl;
   donateEl.textContent = CONFIG.donateButtonText;
   document.getElementById('footerLine').textContent = CONFIG.footerText;
+  document.getElementById('closedTitle').textContent = CONFIG.closedTitle;
+  document.getElementById('closedMessage').innerHTML = CONFIG.closedHtml;
+  document.getElementById('closedDonateHead').textContent = CONFIG.closedDonateHeading;
+  document.getElementById('closedDonateDetail').innerHTML = CONFIG.closedDonateHtml;
+  var closedDonateEl = document.getElementById('closedDonateLink');
+  closedDonateEl.href = CONFIG.donationUrl;
+  closedDonateEl.textContent = CONFIG.donateButtonText;
 
   // The page runs in one of three modes:
   //  - 'apps-script': served by Google Apps Script (google.script.run available).
@@ -541,8 +571,6 @@
   // fields replace "Last name", category is fixed to "Peninsula Bridge"
   // and hidden, and there is no T-shirt picker and no donation ask.
   var PB_MODE = false;
-  var DEFAULT_LEDE = null;
-  var PB_LEDE = CONFIG.pbLedeHtml;
   var DEFAULT_ASK = null;   // captured before the first swap
   var PB_ASK = CONFIG.pbContactHtml;
   var DEFAULT_HERO = null;  // captured before the first swap: {src, alt}
@@ -633,11 +661,32 @@
     if (focusFirst) card.querySelector('input').focus();
   }
 
+  // Registration kill switch: the server reports registrationClosed (from
+  // the REGISTRATION_CLOSED script property) with the status call. While
+  // closed, the form is hidden and a race-day walk-up note shows instead,
+  // keeping the donation link up for late runners — except in PB mode,
+  // which never shows donations.
+  var REG_CLOSED = false;
+
+  // The intro line depends on both modes: no "register below" ask while
+  // registration is closed.
+  function renderLede() {
+    var html;
+    if (PB_MODE) html = REG_CLOSED ? CONFIG.pbClosedLede : CONFIG.pbLedeHtml;
+    else html = REG_CLOSED ? CONFIG.blurbHtml : CONFIG.blurbHtml + '<br><br>' + CONFIG.registerLineHtml;
+    document.getElementById('lede').innerHTML = html;
+  }
+
+  function renderClosed() {
+    document.getElementById('closed').classList.toggle('on', REG_CLOSED);
+    document.getElementById('closedDonate').hidden = PB_MODE;
+    document.getElementById('reg').classList.toggle('closed', REG_CLOSED);
+    renderLede();
+  }
+
   function setPbMode(on) {
     PB_MODE = on;
-    var lede = document.getElementById('lede');
-    if (DEFAULT_LEDE === null) DEFAULT_LEDE = lede.innerHTML;
-    lede.innerHTML = on ? PB_LEDE : DEFAULT_LEDE;
+    renderClosed();
     var hero = document.getElementById('heroImg');
     if (DEFAULT_HERO === null) DEFAULT_HERO = { src: hero.src, alt: hero.alt };
     hero.src = on ? PB_HERO_SRC : DEFAULT_HERO.src;
@@ -805,7 +854,9 @@
       claimedCount = (status.shirtEligibleCount != null
         ? status.shirtEligibleCount : status.participantCount) || 0;
       sponsors = status.sponsors || [];
+      REG_CLOSED = !!status.registrationClosed;
       renderSponsors();
+      renderClosed();
       refresh();
     }, function () { /* leave claimedCount at 0; the server still enforces the cutoff */ });
   }
@@ -846,6 +897,11 @@
     document.getElementById('togglePb').addEventListener('click', function () {
       setPbMode(!PB_MODE);
       this.textContent = PB_MODE ? 'Back to public form' : 'Preview PB family mode';
+    });
+    document.getElementById('toggleClosed').addEventListener('click', function () {
+      REG_CLOSED = !REG_CLOSED;
+      renderClosed();
+      this.textContent = REG_CLOSED ? 'Reopen registration' : 'Simulate registration closed';
     });
   }
   if (!runnersEl.children.length) addRunner(false);

@@ -27,6 +27,8 @@ var CONFIG = {
   shirtLimit: 100,          // free tees for the first N shirt-eligible participants
   firstBib: 1,
   maxRunnersPerSubmission: 20,
+  closedMessage: 'Registration is now closed. Feel free to show up on the day of \u2014 there will be a ' +
+    'limited number of bibs with timers for unregistered runners, first come, first served.',
   organizersText: 'Janice Chan (janice.chan@gmail.com) or Kavya (kavyashree.ks@gmail.com)',
   organizersHtml: '<a href="mailto:janice.chan@gmail.com" style="color:#C93A14">Janice Chan</a> ' +
                   'or <a href="mailto:kavyashree.ks@gmail.com" style="color:#C93A14">Kavya</a>',
@@ -105,10 +107,21 @@ function doPost(e) {
  * Called from the page on load so the form knows whether free T-shirts
  * are still available (and for how many more participants).
  */
+// Registration kill switch: in the Apps Script editor, open Project
+// Settings (gear icon) -> Script properties and add
+// REGISTRATION_CLOSED = true to close registration (no redeploy
+// needed; properties are read live). Delete the property, or set it to
+// anything other than "true", to reopen.
+function registrationClosed_() {
+  var v = PropertiesService.getScriptProperties().getProperty('REGISTRATION_CLOSED');
+  return String(v || '').trim().toLowerCase() === 'true';
+}
+
 function getEventStatus() {
   var sheet = registrationsSheet_();
   var props = PropertiesService.getScriptProperties();
   return {
+    registrationClosed: registrationClosed_(),
     participantCount: participantCount_(props, sheet),
     shirtEligibleCount: shirtEligibleCount_(props, sheet),
     shirtLimit: SHIRT_LIMIT,
@@ -217,6 +230,7 @@ function removeSponsor(password, row, name) {
  *            participantCount, shirtsDenied }
  */
 function submitRegistration(payload) {
+  if (registrationClosed_()) throw new Error(CONFIG.closedMessage);
   if (!payload || !Array.isArray(payload.participants) || payload.participants.length === 0) {
     throw new Error('At least one runner is required.');
   }

@@ -9,6 +9,7 @@ A registration website for the Peninsula Bridge Fun Run on **Sunday, October 4, 
 - After submitting, shows a confirmation with a **suggested donation of $25 per participant**, with a button to Peninsula Bridge's donation page (`https://givebutter.com/peninsula-bridge-fun-run-2026`).
 - **Free T-shirts for the first 100 participants**: once 100 participants are registered, the shirt-size picker is replaced with a friendly "all free tees claimed" note. The cutoff uses a dedicated participant counter (`participantCount` in Script Properties, cross-checked against the sheet's row count) — deliberately independent of bib numbers, so bib allocation logic can change freely. Eligibility is enforced server-side under the same lock as bib assignment, so the 100th shirt can't be double-claimed; if shirts run out mid-submission, the confirmation screen says which runners missed out.
 - **Confirmation email**: after a successful registration the contact receives a branded HTML email (plain-text fallback) with the event details, their runners (category and shirt size on the public form), the suggested-donation link (public only), and who to contact for changes — Janice/Kavya for public registrations, Suzanne for `?pb=1`. Sent via `MailApp` after the rows are written; a mail failure never fails the registration. Note: deploying this adds a mail permission (re-authorize when prompted), and consumer accounts can send ~100/day.
+- **Registration kill switch**: when it's time to stop taking sign-ups, set the Script Property `REGISTRATION_CLOSED` to `true` (see *Closing registration* below) — no redeploy needed. The form is replaced by a "Registration is now closed — feel free to show up on the day of; there will be a limited number of bibs with timers for unregistered runners, first come, first served" note, with the donation link still shown for late runners (except on `?pb=1`, which never shows donations). The server also rejects submissions while closed, so a stale open tab can't sneak one in.
 - **Duplicate guard**: a submission whose runners are already registered under the same contact email is rejected with a friendly message naming them (and pointing to the organizers for changes), so double-clicks and re-submissions can't create duplicate rows or consume extra shirt slots. Enforced server-side under the same lock as bib assignment.
 - Appends one row per participant to the Google Sheet: `Bib #, First Name, Last Name, Mother's Maiden Name, Category, T-Shirt Size, Contact Name, Contact Email, Contact Phone, Registered At`. The header row is kept in sync automatically (`ensureHeader_`), so column changes in `Code.gs` show up in the sheet on the next submission.
 
@@ -44,6 +45,17 @@ All year-specific values live in one `CONFIG` object at the top of each file:
 For a new year: update the three CONFIG blocks consistently (donation amount, shirt limit, sizes, and categories appear in both `Code.gs` and `Index.html`), swap the hero photos in `Index.html` if desired, then `clasp push` + `clasp deploy -i <id>` and update the GitHub Pages copies. Operationally also: make a fresh registration spreadsheet (or run `resetForLaunch`), create the new year's Givebutter page, refresh the `Sponsors` tab, set `ADMIN_PASSWORD`, and regenerate the QR codes for the new links.
 
 - **Sponsors during the season**: no code change needed — use the dashboard's Sponsors panel (or edit the `Sponsors` sheet tab directly).
+
+## Closing registration
+
+No code change or redeploy — it's a Script Property, read live on every request:
+
+1. Open the registration spreadsheet → **Extensions → Apps Script** → **Project Settings (gear icon) → Script properties**.
+2. **Add script property**: name `REGISTRATION_CLOSED`, value `true` (case and surrounding spaces don't matter), then **Save**.
+3. Both the public page and `?pb=1` immediately hide the form and show the "Registration is now closed" note (public keeps the donation link for race-day walk-ups); the server rejects any submission while the property is set.
+4. To reopen, delete the property or set it to anything other than `true`.
+
+The closed-state wording lives in `CONFIG` (`closedMessage` in `Code.gs` for the server-side rejection; `closedTitle`/`closedHtml`/`closedDonateHeading`/`closedDonateHtml`/`pbClosedLede` in `Index.html` for the page).
 - After editing code, redeploy via clasp (`clasp push` + `clasp deploy -i <id>`) or **Deploy → Manage deployments → Edit → New version** (the URL stays the same).
 
 ## Deploying with clasp (no more copy-paste)
