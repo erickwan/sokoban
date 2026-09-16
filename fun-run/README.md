@@ -42,6 +42,26 @@ A registration website for the Peninsula Bridge Fun Run on **Sunday, October 4, 
 - **Sponsors**: no code change needed — use the dashboard's Sponsors panel (or edit the `Sponsors` sheet tab directly).
 - After editing code, redeploy via **Deploy → Manage deployments → Edit → New version** (the URL stays the same).
 
+## Deploying with clasp (no more copy-paste)
+
+One-time setup:
+
+1. Enable the Apps Script API for your account: https://script.google.com/home/usersettings -> "Google Apps Script API" -> On.
+2. `npm install -g @google/clasp`, then `clasp login`.
+3. In a clone of this repo: `cp .clasp.json.example .clasp.json` and paste your Script ID into it (Apps Script editor -> Project Settings (gear) -> IDs).
+4. `clasp pull` once — this fetches `appsscript.json` (the project manifest) into the repo; commit it. If the pull also rewrites Code.gs/Index.html/Admin.html with older content, restore them with `git checkout -- Code.gs Index.html Admin.html` (the repo is the source of truth).
+5. Note your deployment ID: Deploy -> Manage deployments (the `AKfycb...` ID from the /exec URL).
+
+Every update after that:
+
+```bash
+git pull
+clasp push                     # upload Code.gs / Index.html / Admin.html
+clasp deploy -i DEPLOYMENT_ID  # bump the live /exec deployment to a new version
+```
+
+`.clasp.json` is gitignored (it is per-user); `.claspignore` limits pushes to the three project files plus the manifest. Caveats: `clasp push` overwrites the online project, so stop hand-editing in the online editor; and authorization prompts for newly required permissions (like the mail scope) still need a one-time manual Run from the editor.
+
 ## Static hosting on GitHub Pages (optional)
 
 Some signed-in Google users hit a Drive "unable to open the file" page on `script.google.com` URLs (Google's multi-account session routing). Both pages also run from any static host: copy `Index.html` -> `index.html` and `Admin.html` -> `admin.html` into a public GitHub Pages repo and set the `SCRIPT_URL` constant near the top of each file's script to the web app `/exec` URL. The pages then call the backend's JSON API (`doPost` in `Code.gs`) over anonymous `fetch()`, which bypasses Google's account routing entirely. The Apps Script URLs keep working unchanged; `?pb=1` works on the static copy too, and the dashboard becomes `admin.html`.
