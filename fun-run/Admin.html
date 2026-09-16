@@ -424,16 +424,33 @@
       else if (request.action === 'removeSponsor') runner.removeSponsor(request.password, request.row, request.name);
       else runner.getAdminStats(request.password);
     } else {
-      fetch(SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(request)
-      }).then(function (r) { return r.json(); })
-        .then(function (res) {
-          if (res && res.ok) onOk(res.result);
-          else throw new Error((res && res.error) || 'Request failed.');
-        })
-        .catch(function (err) { onErr(err); });
+      // Apps Script's content-serving hop occasionally fails (a 404 or a
+      // CORS-less error page), so read-only actions retry automatically;
+      // writes never retry, to avoid double-applying.
+      var retriesLeft = (request.action === 'status' || request.action === 'adminStats') ? 2 : 0;
+      var attempt = function () {
+        fetch(SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(request)
+        }).then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (res && res.ok) return onOk(res.result);
+            var e = new Error((res && res.error) || 'Request failed.');
+            e.appError = true;
+            throw e;
+          })
+          .catch(function (err) {
+            if (!err.appError && retriesLeft > 0) {
+              retriesLeft -= 1;
+              setTimeout(attempt, 800);
+              return;
+            }
+            if (!err.appError) err.transient = true;
+            onErr(err);
+          });
+      };
+      attempt();
     }
   }
 
@@ -637,7 +654,7 @@
         }
         callBackend({ action: 'removeSponsor', password: savedPassword, row: s.row, name: s.name },
           function (res) { renderSponsorAdmin(res.sponsors || []); },
-          function (err) { showSponsorError(err && err.message ? err.message : 'Something went wrong.'); });
+          function (err) { showSponsorError(err && err.transient ? 'Could not reach the server — the change may not have saved. Refresh the dashboard to check before retrying.' : (err && err.message ? err.message : 'Something went wrong.')); });
       });
       item.appendChild(img); item.appendChild(who); item.appendChild(rm);
       box.appendChild(item);
@@ -698,7 +715,7 @@
           document.getElementById('sponsorForm').reset();
           restore();
         },
-        function (err) { restore(); showSponsorError(err && err.message ? err.message : 'Something went wrong.'); });
+        function (err) { restore(); showSponsorError(err && err.transient ? 'Could not reach the server — the change may not have saved. Refresh the dashboard to check before retrying.' : (err && err.message ? err.message : 'Something went wrong.')); });
     };
     if (file) compressImageFile(file, submitWith, function (err) { restore(); showSponsorError(err.message); });
     else submitWith(imageUrl);
@@ -718,7 +735,9 @@
         function (stats) { restore(); render(stats); },
         function (err) {
           restore();
-          var msg = err && err.message ? err.message : 'Something went wrong. Please try again.';
+          var msg = err && err.transient
+            ? 'Could not reach the server — this happens occasionally; please try again.'
+            : (err && err.message ? err.message : 'Something went wrong. Please try again.');
           if (document.getElementById('dash').hidden) showLoginError(msg);
           else alert(msg);
         });

@@ -463,16 +463,33 @@
       // text/plain keeps this a "simple request" (no CORS preflight, which
       // Apps Script does not answer); cross-origin fetch sends no cookies,
       // so the call is anonymous regardless of Google sign-in state.
-      fetch(SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(request)
-      }).then(function (r) { return r.json(); })
-        .then(function (res) {
-          if (res && res.ok) onOk(res.result);
-          else throw new Error((res && res.error) || 'Request failed.');
-        })
-        .catch(function (err) { onErr(err); });
+      // Apps Script's content-serving hop occasionally fails (a 404 or a
+      // CORS-less error page), so read-only actions retry automatically;
+      // writes never retry, to avoid double-submitting.
+      var retriesLeft = (request.action === 'status' || request.action === 'adminStats') ? 2 : 0;
+      var attempt = function () {
+        fetch(SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(request)
+        }).then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (res && res.ok) return onOk(res.result);
+            var e = new Error((res && res.error) || 'Request failed.');
+            e.appError = true;
+            throw e;
+          })
+          .catch(function (err) {
+            if (!err.appError && retriesLeft > 0) {
+              retriesLeft -= 1;
+              setTimeout(attempt, 800);
+              return;
+            }
+            if (!err.appError) err.transient = true;
+            onErr(err);
+          });
+      };
+      attempt();
     }
   }
 
@@ -710,7 +727,10 @@
         function (result) { restore(); showConfirmation(result); },
         function (err) {
           restore();
-          showError((err && err.message ? err.message : 'Something went wrong.') + ' Please try again.');
+          showError(err && err.transient
+            ? 'The connection hiccuped, so we can’t tell whether your registration went through. ' +
+              'Please try again — if you then see an “already registered” note, your first attempt was recorded.'
+            : (err && err.message ? err.message : 'Something went wrong.') + ' Please try again.');
         });
     } else {
       // Preview simulation: nothing saved. Only bibs.length is read from
