@@ -409,6 +409,24 @@ function sendConfirmationEmail_(contactName, contactEmail, participants, pb, sug
   });
 }
 
+/**
+ * Sends a sample confirmation email to the script owner. Run this once
+ * from the editor after deploying the email feature: a web-app
+ * redeploy often does NOT prompt for the new mail permission, so the
+ * deployed app fails silently at send time until the permission is
+ * granted. Running this from the editor forces the authorization
+ * dialog, and the email landing in your inbox proves sending works.
+ */
+function sendTestEmail() {
+  sendConfirmationEmail_(
+    'Test Contact',
+    Session.getActiveUser().getEmail(),
+    [{ firstName: 'Test', lastName: 'Runner', category: 'Parent/Guardian', finalShirtSize: 'Adult M' }],
+    false,
+    DONATION_PER_RUNNER
+  );
+}
+
 var HEADERS = ['Bib #', 'First Name', 'Last Name', "Mother's Maiden Name", 'Category',
                'T-Shirt Size', 'Contact Name', 'Contact Email', 'Contact Phone', 'Registered At'];
 
