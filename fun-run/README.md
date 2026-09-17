@@ -90,6 +90,14 @@ Two isolation options — the staging copy is the recommended one:
 
 2. **`resetForLaunch()`.** If test registrations ever land in the real sheet, open its Apps Script editor, pick `resetForLaunch` in the function dropdown, and click Run. It deletes all registration rows and resets the bib and shirt counters to their starting state — so run it only before launch, never after real registrations exist.
 
+## Bulk reminder emails
+
+`Code.gs` has an editor-run reminder flow: one email per group contact with the event details, their registered runners, and a **Donate $25 × runners** button (PB family groups get Suzanne as the contact and no donation ask, like the rest of the site). From the Apps Script editor:
+
+1. Run **`previewReminderEmails`** — logs every would-be recipient (View → Executions → the run's log) and sends nothing.
+2. Optionally run **`sendTestReminderEmail`** — one sample (with the donate button) to your own inbox.
+3. Run **`sendReminderEmails`** — sends for real, one per unique contact email (case-insensitive; rows with malformed emails are skipped), and logs a summary. It refuses to start if the remaining MailApp daily quota (~100/day on consumer accounts) can't cover every group; re-running after a partial failure re-emails contacts that already got one.
+
 ## Sharing results
 
 Share the Google Sheet with coworkers as usual (the web app keeps working regardless of who the sheet is shared with). Only the sheet owner's deployment writes to it — visitors never need Google accounts.

@@ -480,6 +480,193 @@ function sendTestEmail() {
   );
 }
 
+/* ===================== Bulk reminder emails =====================
+ * One reminder per group contact, with the event details, their
+ * registered runners, and (for public registrations) a donate button
+ * for $DONATION_PER_RUNNER x their runner count. PB family groups get
+ * the reminder with Suzanne as the contact and no donation ask,
+ * matching the rest of the site.
+ *
+ * From the Apps Script editor:
+ *   1. Run previewReminderEmails() and check the log (View > Logs):
+ *      it lists every recipient and sends NOTHING.
+ *   2. Optionally run sendTestReminderEmail() to get a sample in your
+ *      own inbox.
+ *   3. Run sendReminderEmails() to send for real. Safe to re-run after
+ *      a partial failure only if you accept some contacts getting the
+ *      reminder twice. Note MailApp's daily quota (~100/day on
+ *      consumer accounts) — the send refuses to start if the quota
+ *      can't cover every group.
+ * ================================================================ */
+
+// One entry per unique contact email (case-insensitive), in first-seen
+// order, with all of that contact's runners from the sheet.
+function reminderGroups_() {
+  var sheet = registrationsSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var iFirst = HEADERS.indexOf('First Name');
+  var iLast = HEADERS.indexOf('Last Name');
+  var iCat = HEADERS.indexOf('Category');
+  var iShirt = HEADERS.indexOf('T-Shirt Size');
+  var iName = HEADERS.indexOf('Contact Name');
+  var iEmail = HEADERS.indexOf('Contact Email');
+  var groups = {};
+  var order = [];
+  sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues().forEach(function (row) {
+    var email = clean_(row[iEmail]);
+    var key = email.toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;  // skip malformed rows
+    if (!groups[key]) {
+      groups[key] = { email: email, name: clean_(row[iName]), participants: [] };
+      order.push(key);
+    }
+    var pb = clean_(row[iCat]) === PB_CATEGORY;
+    groups[key].participants.push({
+      firstName: clean_(row[iFirst]),
+      lastName: clean_(row[iLast]),
+      category: clean_(row[iCat]),
+      finalShirtSize: pb ? '' : clean_(row[iShirt]),
+      pb: pb
+    });
+  });
+  return order.map(function (key) {
+    var g = groups[key];
+    g.pb = g.participants.every(function (p) { return p.pb; });
+    return g;
+  });
+}
+
+function sendReminderEmail_(group) {
+  var pb = group.pb;
+  var donation = DONATION_PER_RUNNER * group.participants.filter(function (p) { return !p.pb; }).length;
+  var showDonation = !pb && donation > 0;
+  var runnerLine = function (p) {
+    var extras = [];
+    if (!p.pb) {
+      extras.push(p.category);
+      if (p.finalShirtSize) extras.push('T-shirt: ' + p.finalShirtSize);
+    }
+    return p.firstName + ' ' + p.lastName + (extras.length ? ' — ' + extras.join(', ') : '');
+  };
+
+  var body =
+    'Hi ' + group.name + ',\n\n' +
+    'A quick reminder that the ' + CONFIG.eventTitle + ' is almost here — ' +
+    "we can't wait to see your group!\n\n" +
+    'Event details\n' +
+    '  ' + EVENT_INFO.when + '\n' +
+    '  ' + EVENT_INFO.where + '\n' +
+    '  ' + EVENT_INFO.times + '\n\n' +
+    'Your registered runners\n' +
+    group.participants.map(function (p) { return '  - ' + runnerLine(p); }).join('\n') + '\n\n' +
+    "Your printed bibs will be waiting at check-in.\n\n" +
+    (showDonation ?
+      "If you haven't had a chance to donate yet, a suggested donation of $" + DONATION_PER_RUNNER +
+      ' per runner ($' + donation + ' for your group) goes straight to Peninsula Bridge: ' +
+      DONATION_URL + '\n\n' : '') +
+    'Need to update your registration? Contact the organizers — ' +
+    (pb ? PB_ORGANIZERS_TEXT : ORGANIZERS_TEXT) + '.\n\n' +
+    'See you at the starting line!\n' +
+    CONFIG.eventTitle;
+
+  var htmlBody =
+    '<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#172A4D">' +
+      '<div style="background:#F04E23;color:#ffffff;padding:20px 24px;border-radius:10px 10px 0 0">' +
+        '<div style="font-size:21px;font-weight:bold">' + escapeHtml_(CONFIG.eventTitle) + '</div>' +
+        '<div style="font-size:14px;opacity:0.92">Race-day reminder</div>' +
+      '</div>' +
+      '<div style="border:1px solid #D8E0EC;border-top:none;padding:24px;border-radius:0 0 10px 10px">' +
+        '<p style="margin:0 0 16px">Hi ' + escapeHtml_(group.name) + ', the run is almost here — ' +
+          "we can&#39;t wait to see your group!</p>" +
+        '<p style="margin:0 0 4px;font-size:12px;letter-spacing:1px;color:#51617D"><strong>EVENT DETAILS</strong></p>' +
+        '<p style="margin:0 0 16px;line-height:1.5">' +
+          escapeHtml_(EVENT_INFO.when) + '<br>' +
+          escapeHtml_(EVENT_INFO.where) + '<br>' +
+          escapeHtml_(EVENT_INFO.times) + '</p>' +
+        '<p style="margin:0 0 4px;font-size:12px;letter-spacing:1px;color:#51617D"><strong>YOUR REGISTERED RUNNERS</strong></p>' +
+        '<ul style="margin:0 0 16px;padding-left:20px;line-height:1.6">' +
+          group.participants.map(function (p) { return '<li>' + escapeHtml_(runnerLine(p)) + '</li>'; }).join('') +
+        '</ul>' +
+        '<p style="margin:0 0 16px">Your printed bibs will be waiting at check-in.</p>' +
+        (showDonation ?
+          '<p style="margin:0 0 8px">If you haven&#39;t had a chance to donate yet, a suggested donation of ' +
+          '<strong>$' + DONATION_PER_RUNNER + ' per runner</strong> ($' + donation +
+          ' for your group) goes straight to Peninsula Bridge.</p>' +
+          '<p style="margin:0 0 20px"><a href="' + DONATION_URL + '" ' +
+          'style="background:#157A4E;color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:999px;display:inline-block">' +
+          'Donate $' + donation + ' to Peninsula Bridge</a></p>' : '') +
+        '<p style="margin:0;border-top:1px solid #D8E0EC;padding-top:14px;color:#51617D;font-size:14px">' +
+          'Need to update your registration? Contact the organizers — ' +
+          (pb ? PB_ORGANIZERS_HTML : ORGANIZERS_HTML) + '.</p>' +
+      '</div>' +
+    '</div>';
+
+  MailApp.sendEmail({
+    to: group.email,
+    replyTo: pb ? CONFIG.pbOrganizersReplyTo : CONFIG.organizersReplyTo,
+    name: CONFIG.eventTitle,
+    subject: 'Reminder — ' + CONFIG.eventTitle + ' · ' + CONFIG.when,
+    body: body,
+    htmlBody: htmlBody
+  });
+}
+
+// Dry run: logs every reminder that WOULD go out, sends nothing.
+function previewReminderEmails() {
+  var groups = reminderGroups_();
+  groups.forEach(function (g, i) {
+    Logger.log('%s. %s <%s> — %s runner(s)%s', String(i + 1), g.name, g.email,
+      String(g.participants.length), g.pb ? ' [PB family — no donation ask]' : ' — donate button: $' +
+      DONATION_PER_RUNNER * g.participants.filter(function (p) { return !p.pb; }).length);
+  });
+  var summary = groups.length + ' reminder(s) would be sent. Remaining daily mail quota: ' +
+    MailApp.getRemainingDailyQuota() + '.';
+  Logger.log(summary);
+  return summary;
+}
+
+// The real send: one email per group contact, in sheet order.
+function sendReminderEmails() {
+  var groups = reminderGroups_();
+  if (!groups.length) return 'No registrations found — nothing to send.';
+  var quota = MailApp.getRemainingDailyQuota();
+  if (groups.length > quota) {
+    throw new Error('Not sending: ' + groups.length + ' reminders needed but only ' + quota +
+      ' emails left in today’s MailApp quota. Try again tomorrow or from an account with a higher quota.');
+  }
+  var sent = 0;
+  var failed = [];
+  groups.forEach(function (g) {
+    try {
+      sendReminderEmail_(g);
+      sent++;
+    } catch (err) {
+      failed.push(g.email + ' (' + err + ')');
+    }
+    Utilities.sleep(200);  // gentle pacing between sends
+  });
+  var summary = 'Sent ' + sent + ' of ' + groups.length + ' reminder(s).' +
+    (failed.length ? ' Failed: ' + failed.join('; ') : '');
+  Logger.log(summary);
+  return summary;
+}
+
+// Sends one sample reminder (with the donate button) to the script
+// owner — run from the editor to check the layout and force the mail
+// permission prompt if it hasn't been granted yet.
+function sendTestReminderEmail() {
+  sendReminderEmail_({
+    name: 'Test Contact',
+    email: Session.getActiveUser().getEmail(),
+    pb: false,
+    participants: [
+      { firstName: 'Test', lastName: 'Runner', category: 'Parent/Guardian', finalShirtSize: 'Adult M', pb: false },
+      { firstName: 'Test', lastName: 'Kid', category: 'Student Grade 7', finalShirtSize: 'Child M', pb: false }
+    ]
+  });
+}
+
 var HEADERS = ['Bib #', 'First Name', 'Last Name', "Mother's Maiden Name", 'Category',
                'T-Shirt Size', 'Contact Name', 'Contact Email', 'Contact Phone', 'Registered At'];
 
