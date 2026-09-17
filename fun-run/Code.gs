@@ -500,9 +500,14 @@ function sendTestEmail() {
  * ================================================================ */
 
 // One entry per unique contact email (case-insensitive), in first-seen
-// order, with all of that contact's runners from the sheet.
+// order, with all of that contact's runners from the sheet. Each group
+// carries its sheet row numbers plus alreadySent: true when every one
+// of its rows has a "Reminder Sent At" stamp — a group with any
+// unstamped row (e.g. runners added after the last send) is due again,
+// and a send re-stamps all of its rows.
 function reminderGroups_() {
   var sheet = registrationsSheet_();
+  ensureHeader_(sheet);  // makes the "Reminder Sent At" column exist/visible
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
   var iFirst = HEADERS.indexOf('First Name');
@@ -511,14 +516,15 @@ function reminderGroups_() {
   var iShirt = HEADERS.indexOf('T-Shirt Size');
   var iName = HEADERS.indexOf('Contact Name');
   var iEmail = HEADERS.indexOf('Contact Email');
+  var iSent = HEADERS.indexOf('Reminder Sent At');
   var groups = {};
   var order = [];
-  sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues().forEach(function (row) {
+  sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues().forEach(function (row, i) {
     var email = clean_(row[iEmail]);
     var key = email.toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;  // skip malformed rows
     if (!groups[key]) {
-      groups[key] = { email: email, name: clean_(row[iName]), participants: [] };
+      groups[key] = { email: email, name: clean_(row[iName]), participants: [], rows: [], alreadySent: true };
       order.push(key);
     }
     var pb = clean_(row[iCat]) === PB_CATEGORY;
@@ -529,6 +535,8 @@ function reminderGroups_() {
       finalShirtSize: pb ? '' : clean_(row[iShirt]),
       pb: pb
     });
+    groups[key].rows.push(i + 2);  // sheet row number of this participant
+    if (!clean_(row[iSent])) groups[key].alreadySent = false;
   });
   return order.map(function (key) {
     var g = groups[key];
@@ -612,42 +620,78 @@ function sendReminderEmail_(group) {
   });
 }
 
-// Dry run: logs every reminder that WOULD go out, sends nothing.
+// Dry run: logs every reminder that WOULD go out (and which contacts
+// are already stamped as sent), sends nothing.
 function previewReminderEmails() {
   var groups = reminderGroups_();
+  var pending = 0;
   groups.forEach(function (g, i) {
+    var status = g.alreadySent ? ' [already sent — will be skipped]'
+      : g.pb ? ' [PB family — no donation ask]'
+      : ' — donate button: $' +
+        DONATION_PER_RUNNER * g.participants.filter(function (p) { return !p.pb; }).length;
+    if (!g.alreadySent) pending++;
     Logger.log('%s. %s <%s> — %s runner(s)%s', String(i + 1), g.name, g.email,
-      String(g.participants.length), g.pb ? ' [PB family — no donation ask]' : ' — donate button: $' +
-      DONATION_PER_RUNNER * g.participants.filter(function (p) { return !p.pb; }).length);
+      String(g.participants.length), status);
   });
-  var summary = groups.length + ' reminder(s) would be sent. Remaining daily mail quota: ' +
+  var summary = pending + ' of ' + groups.length + ' contact(s) would be emailed (' +
+    (groups.length - pending) + ' already sent). Remaining daily mail quota: ' +
     MailApp.getRemainingDailyQuota() + '.';
   Logger.log(summary);
   return summary;
 }
 
-// The real send: one email per group contact, in sheet order.
+// The real send: one email per group contact, in sheet order. Each
+// successful send stamps "Reminder Sent At" on all of that contact's
+// rows, and already-stamped contacts are skipped — so re-running after
+// a partial failure (or tomorrow, if the quota ran out) only covers
+// the misses. Avoid deleting sheet rows while a send is running (the
+// stamps are written by row number).
 function sendReminderEmails() {
   var groups = reminderGroups_();
   if (!groups.length) return 'No registrations found — nothing to send.';
-  var quota = MailApp.getRemainingDailyQuota();
-  if (groups.length > quota) {
-    throw new Error('Not sending: ' + groups.length + ' reminders needed but only ' + quota +
-      ' emails left in today’s MailApp quota. Try again tomorrow or from an account with a higher quota.');
+  var pending = groups.filter(function (g) { return !g.alreadySent; });
+  if (!pending.length) {
+    return 'All ' + groups.length + ' contact(s) are already stamped as sent — nothing to do. ' +
+      'Run clearReminderTracking() first to start a new reminder round.';
   }
+  var quota = MailApp.getRemainingDailyQuota();
+  if (pending.length > quota) {
+    throw new Error('Not sending: ' + pending.length + ' reminders needed but only ' + quota +
+      ' emails left in today’s MailApp quota. Try again tomorrow — already-sent contacts are skipped.');
+  }
+  var sheet = registrationsSheet_();
+  var sentCol = HEADERS.indexOf('Reminder Sent At') + 1;
   var sent = 0;
   var failed = [];
-  groups.forEach(function (g) {
+  pending.forEach(function (g) {
     try {
       sendReminderEmail_(g);
+      var now = new Date();
+      g.rows.forEach(function (r) { sheet.getRange(r, sentCol).setValue(now); });
       sent++;
     } catch (err) {
       failed.push(g.email + ' (' + err + ')');
     }
     Utilities.sleep(200);  // gentle pacing between sends
   });
-  var summary = 'Sent ' + sent + ' of ' + groups.length + ' reminder(s).' +
+  var summary = 'Sent ' + sent + ' of ' + pending.length + ' pending reminder(s) (' +
+    (groups.length - pending.length) + ' contact(s) skipped as already sent).' +
     (failed.length ? ' Failed: ' + failed.join('; ') : '');
+  Logger.log(summary);
+  return summary;
+}
+
+// Clears every "Reminder Sent At" stamp so the next sendReminderEmails()
+// starts a fresh round and emails everyone again.
+function clearReminderTracking() {
+  var sheet = registrationsSheet_();
+  ensureHeader_(sheet);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 'No registration rows.';
+  var sentCol = HEADERS.indexOf('Reminder Sent At') + 1;
+  sheet.getRange(2, sentCol, lastRow - 1, 1).clearContent();
+  var summary = 'Cleared reminder stamps on ' + (lastRow - 1) + ' row(s).';
   Logger.log(summary);
   return summary;
 }
@@ -668,7 +712,8 @@ function sendTestReminderEmail() {
 }
 
 var HEADERS = ['Bib #', 'First Name', 'Last Name', "Mother's Maiden Name", 'Category',
-               'T-Shirt Size', 'Contact Name', 'Contact Email', 'Contact Phone', 'Registered At'];
+               'T-Shirt Size', 'Contact Name', 'Contact Email', 'Contact Phone', 'Registered At',
+               'Reminder Sent At'];
 
 // Category recorded for registrations made through the ?pb=1 form
 // variant (Peninsula Bridge families: surname fields, no shirt picker,

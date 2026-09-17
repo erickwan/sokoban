@@ -96,7 +96,8 @@ Two isolation options — the staging copy is the recommended one:
 
 1. Run **`previewReminderEmails`** — logs every would-be recipient (View → Executions → the run's log) and sends nothing.
 2. Optionally run **`sendTestReminderEmail`** — one sample (with the donate button) to your own inbox.
-3. Run **`sendReminderEmails`** — sends for real, one per unique contact email (case-insensitive; rows with malformed emails are skipped), and logs a summary. It refuses to start if the remaining MailApp daily quota (~100/day on consumer accounts) can't cover every group; re-running after a partial failure re-emails contacts that already got one.
+3. Run **`sendReminderEmails`** — sends for real, one per unique contact email (case-insensitive; rows with malformed emails are skipped), and logs a summary. Each successful send stamps a **`Reminder Sent At`** column (auto-created) on all of that contact's rows, and stamped contacts are skipped — so re-running after a partial failure, or the next day if the MailApp daily quota (~100/day on consumer accounts) ran out, only covers the misses. The send also refuses to start if the remaining quota can't cover the still-pending contacts. A contact who registers more runners after being reminded becomes pending again (their new rows are unstamped) and gets a fresh email listing everyone. Don't delete sheet rows while a send is running.
+4. For a second reminder round later, run **`clearReminderTracking`** — it blanks the `Reminder Sent At` column so the next send emails everyone again.
 
 ## Sharing results
 
