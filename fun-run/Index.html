@@ -434,7 +434,7 @@
   <main>
     <section id="reg" aria-label="Registration form">
       <h2>Register your runners</h2>
-      <p class="hint">Register as many participants as needed.</p>
+      <p class="hint" id="regHint"></p>
 
       <form id="form" novalidate>
         <div id="runners"></div>
@@ -515,6 +515,8 @@
     heroAlt: 'Kids sprint from the inflatable start arch at a past Peninsula Bridge Fun Run',
     pbHeroAlt: 'A father and daughter run hand in hand at a past Peninsula Bridge Fun Run',
     photoCreditText: 'Photos: Dylan Cummins',
+    registerHintText: 'Register as many participants as needed, and only registered runners are ' +
+      'guaranteed to get a bib with chip timer.',
     carouselAlts: [   // one per extra carousel photo, in order
       'Friends blast color powder at a runner sprinting past',
       'A runner breaks through clouds of pink and yellow color powder',
@@ -571,6 +573,7 @@
   document.getElementById('heroDate').textContent = CONFIG.heroDate;
   document.getElementById('heroImg').alt = CONFIG.heroAlt;
   document.getElementById('photoCredit').textContent = CONFIG.photoCreditText;
+  document.getElementById('regHint').textContent = CONFIG.registerHintText;
   (function () {
     var slides = document.querySelectorAll('.car-slide');
     for (var i = 0; i < slides.length; i++) slides[i].alt = CONFIG.carouselAlts[i] || '';
