@@ -770,7 +770,16 @@ async function copyOut(text, what) {
   renderPane();
   const box = $('#exportBox'); if (box) { box.focus(); box.select(); }
 }
-function download(text, name, type) {
+async function download(text, name, type) {
+  // Inside the claude.ai viewer, files are saved through its downloads capability.
+  if (window.claude && typeof window.claude.use === 'function') {
+    const dl = await window.claude.use('downloads').catch(() => null);
+    if (dl) {
+      try { await dl.save({ filename: name, data: text }); toast(`Saved ${name}`); }
+      catch (e) { if (e && e.code !== 'declined') toast('Saving is unavailable here. Use Copy instead.'); }
+      return;
+    }
+  }
   try {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([text], { type }));
